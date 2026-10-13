@@ -63,7 +63,7 @@ const brgS = b => spoken(String(Math.round(b) % 360).padStart(3, '0'));
 // ---------- creation ----------
 function createSim(scn, o = {}){
   const seed = (o.seed >>> 0) || 20261013;
-  const rng = rng32(seed);
+  const rng = rng32(Math.imul(seed ^ 0x9E3779B9, 2654435761) >>> 0);
   const map = MAP[scn.map];
   const siteI = o.site || 0, site = scn.sites[siteI] || scn.sites[0];
   const S = {scn, map, seed, rng, t:0, ents:[], ms:[], plans:[], out:[], log:[], ev:[], snaps:[],
@@ -77,7 +77,7 @@ function createSim(scn, o = {}){
     neighbors:(scn.neighbors || []).map(n => ({...n, on:true, cool:0})),
     st:{fired:{GEMT:0, MSE:0}, spent:0, killVal:0, wasted:0, waste:{decoy:0, fals:0, nondal:0, protect:0}, mseDrone:0, viol:0, lateAck:0, misId:0, frat:0, hitsW:0, potW:0, leak:0, kills:0, miss:0, radarLost:false, lsLost:0, vetoes:0, debris:0, engMissed:0, outSector:0, holdSaves:0},
     xp:o.xp || 0, tut:scn.tutorial || null, diff:o.difficulty || 'normal',
-    ended:false, endAt:null, endReason:'', nextSnap:0, nextAuto:0, firstHostile:false, firstTbm:false, idCount:0,
+    ended:false, endAt:null, endReason:'', idLog:{}, nextSnap:0, nextAuto:0, firstHostile:false, firstTbm:false, idCount:0,
   };
   const stock = o.stock ? {...o.stock} : null;
   const take = (k, n) => { if (!stock) return n; const g = Math.min(n, stock[k]); stock[k] -= g; return g; };
@@ -309,6 +309,7 @@ function setId(S, e, id, by){
   if (k.id === id && k.idBy === by) return;
   k.id = id; k.idBy = by;
   if (by === 'PLAYER'){
+    S.idLog[e.uid] = {id, truth:e.truth, kind:e.kind, tag:e.tag, dev:!!e.deviant, iffFail:e.iffFail};
     ev(S, 'ID', `TRK ${k.num} declared ${id}`, {trk:k.num, uid:e.uid});
     const wrong = (id === 'HOS' && (e.truth === 'F' || e.truth === 'N')) || ((id === 'FRD' || id === 'NEU') && e.truth === 'H');
     if (wrong && !e.misIdCounted){ e.misIdCounted = true; S.st.misId++; }
@@ -727,6 +728,7 @@ function resolveMissile(S, m, e){
   let pk = e.T.pk[m.w] || 0;
   pk *= e.trk ? (.75 + .25 * Math.min(1, e.trk.q)) : .5;
   if (m.guidLost > 1.5) pk *= .15;
+  if (S.tut && S.tut.pkMin && pk > 0) pk = Math.max(pk, S.tut.pkMin);
   if (S.tut && S.tut.pk) pk = S.tut.pk;
   if (S.rng() < pk){ kill(S, e, m); }
   else {

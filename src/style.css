@@ -134,19 +134,54 @@ body.legacy .wordmark{font-weight:400; letter-spacing:.04em}
 #log .w-TD .who{color:var(--amber)} #log .w-TD{color:var(--text)}
 #log .w-TCA .who{color:var(--cyan)} #log .w-TCA{color:var(--text)}
 #log .sys{color:var(--dim)} #log .net{color:var(--violet)} #log .me{color:var(--green)}
-.scope-wrap{grid-area:scope; position:relative; min-width:0; min-height:0; background:var(--sea); touch-action:none}
+.scope-wrap{grid-area:scope; position:relative; min-width:0; min-height:0; touch-action:none; padding:14px 14px 28px;
+  background:
+    radial-gradient(circle, #4a5550 0 1.6px, #0a0d0c 2.2px 3.4px, transparent 4px) 5px 5px/14px 14px no-repeat,
+    radial-gradient(circle, #4a5550 0 1.6px, #0a0d0c 2.2px 3.4px, transparent 4px) calc(100% - 5px) 5px/14px 14px no-repeat,
+    radial-gradient(circle, #4a5550 0 1.6px, #0a0d0c 2.2px 3.4px, transparent 4px) 5px calc(100% - 5px)/14px 14px no-repeat,
+    radial-gradient(circle, #4a5550 0 1.6px, #0a0d0c 2.2px 3.4px, transparent 4px) calc(100% - 5px) calc(100% - 5px)/14px 14px no-repeat,
+    linear-gradient(180deg, #1e2523 0%, #141917 40%, #101413 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -2px 0 rgba(0,0,0,.6)}
+body.legacy .scope-wrap{background-color:#0b120c}
+.crt{position:relative; width:100%; height:100%; border-radius:22px; overflow:hidden; background:var(--sea);
+  box-shadow:0 0 0 2px #030404, 0 0 0 5px #252d2a, 0 0 0 6px #0a0d0c, 0 6px 18px rgba(0,0,0,.7)}
 #scope{position:absolute; inset:0; width:100%; height:100%; display:block}
-.scope-ctl{position:absolute; right:10px; top:10px; display:grid; gap:4px}
-.scope-ctl button{width:36px; height:36px; border:1px solid var(--line2); background:rgba(8,12,13,.75); border-radius:2px; font-family:var(--f-disp); font-weight:700; cursor:pointer}
-.scope-ctl button.on{background:var(--amber); color:#1b1204}
-.scope-info{position:absolute; left:10px; bottom:8px; font-family:var(--f-data); font-size:11px; color:var(--dim); pointer-events:none; letter-spacing:.05em}
-.radar-state{position:absolute; left:50%; top:12px; transform:translateX(-50%); font-family:var(--f-disp); font-weight:700; letter-spacing:.14em; font-size:18px; padding:.2em .8em; border:1px solid var(--red); color:var(--red); background:rgba(0,0,0,.6)}
-.toast{position:absolute; left:12px; top:12px; right:60px; max-width:560px; font-family:var(--f-data); font-size:13px; background:rgba(8,12,13,.86); border-left:3px solid var(--amber); padding:7px 10px; pointer-events:none; transition:opacity .4s}
+.glass{position:absolute; inset:0; pointer-events:none; border-radius:inherit; z-index:1;
+  background:
+    radial-gradient(130% 100% at 50% 50%, transparent 58%, rgba(0,0,0,.6) 100%),
+    linear-gradient(155deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,.015) 22%, transparent 34%),
+    repeating-linear-gradient(0deg, rgba(0,0,0,.10) 0 1px, transparent 1px 3px);
+  box-shadow:inset 0 0 50px rgba(0,0,0,.75)}
+.glass::after{content:''; position:absolute; inset:0; opacity:.07; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+body.legacy .glass{background:
+    radial-gradient(120% 95% at 50% 50%, rgba(40,255,90,.05) 0%, transparent 55%, rgba(0,0,0,.7) 100%),
+    linear-gradient(155deg, rgba(200,255,210,.07) 0%, transparent 30%),
+    repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0 1px, transparent 1px 3px)}
+.plate{position:absolute; left:0; right:0; bottom:7px; text-align:center; font-family:var(--f-data); font-size:10px; letter-spacing:.32em; color:#56635e; text-shadow:0 1px 0 #000, 0 -1px 0 rgba(255,255,255,.05); pointer-events:none; white-space:nowrap; overflow:hidden}
+.scope-ctl{position:absolute; right:12px; top:12px; display:grid; gap:6px; z-index:3}
+.scope-ctl button{width:38px; height:38px; border:1px solid #000; border-radius:3px; cursor:pointer; font-family:var(--f-disp); font-weight:700; color:#c9d3cd;
+  background:linear-gradient(#2a322f,#161b19); box-shadow:inset 0 1px 0 rgba(255,255,255,.1), 0 2px 0 #000, 0 3px 6px rgba(0,0,0,.6)}
+.scope-ctl button:active{transform:translateY(1px); box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 1px 0 #000}
+.scope-ctl button.on{background:linear-gradient(#ffc368,#d98a1f); color:#1b1204; box-shadow:0 0 12px rgba(242,165,58,.55), 0 2px 0 #000}
+.scope-info{position:absolute; left:18px; bottom:12px; z-index:2; font-family:var(--f-data); font-size:11px; color:var(--dim); pointer-events:none; letter-spacing:.05em}
+.radar-state{z-index:3; position:absolute; left:50%; top:14px; transform:translateX(-50%); font-family:var(--f-disp); font-weight:700; letter-spacing:.14em; font-size:18px; padding:.2em .8em; border:1px solid var(--red); color:var(--red); background:rgba(0,0,0,.6)}
+.toast{z-index:3; position:absolute; left:16px; top:16px; right:60px; max-width:560px; font-family:var(--f-data); font-size:13px; background:rgba(8,12,13,.86); border-left:3px solid var(--amber); padding:7px 10px; pointer-events:none; transition:opacity .4s}
 .toast b{color:var(--amber)}
-.coach{position:absolute; left:12px; bottom:28px; max-width:min(440px,calc(100% - 70px)); background:rgba(14,20,22,.95); border:1px solid var(--amber); padding:10px 12px; border-radius:3px; display:grid; gap:6px; z-index:5}
-.coach-k{font-family:var(--f-data); font-size:11px; color:var(--amber); letter-spacing:.14em}
-.coach p{margin:0; font-size:14px}
+.coach{position:absolute; left:16px; bottom:30px; width:min(440px,calc(100% - 80px)); max-height:calc(100% - 60px); overflow-y:auto; background:rgba(12,17,16,.96); border:1px solid var(--amber); border-left-width:4px; padding:10px 12px; border-radius:3px; display:grid; gap:8px; z-index:5; box-shadow:0 8px 30px rgba(0,0,0,.6)}
+.coach-k{display:flex; justify-content:space-between; align-items:center; font-family:var(--f-data); font-size:11px; color:var(--amber); letter-spacing:.14em}
+.coach-k .tbtn{padding:0 .5em; font-size:14px}
+.coach p{margin:0; font-size:14.5px; line-height:1.5}
 .coach .btn{justify-self:start}
+.coach.min p,.coach.min .btn,.coach.min .objs{display:none}
+.objs{list-style:none; margin:0; padding:0; display:grid; gap:4px; font-size:13px}
+.objs li{display:grid; grid-template-columns:1.2em minmax(0,1fr); gap:6px; color:var(--dim)}
+.objs li i{font-style:normal; font-family:var(--f-data); color:var(--faint)}
+.objs li.ok{color:var(--text)} .objs li.ok i{color:var(--green)}
+.objs li.no i{color:var(--red)}
+.objs em{font-style:normal; font-family:var(--f-data); font-size:11.5px; color:var(--amber); margin-left:4px}
+.objs li.no em{display:block; color:var(--dim); font-family:var(--f-body); font-size:13px; margin:2px 0 0}
+.coach .objs{border-top:1px solid var(--line2); padding-top:8px}
 .hl{outline:2px solid var(--amber)!important; outline-offset:2px; animation:pulse 1s infinite}
 .side{grid-area:side; display:flex; flex-direction:column; min-height:0; border-left:1px solid var(--line); background:var(--panel); overflow-y:auto}
 .card{padding:10px; display:grid; gap:8px}
@@ -300,3 +335,28 @@ body.legacy .wordmark{font-weight:400; letter-spacing:.04em}
   .ptabs{display:none}
 }
 @media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important} }
+
+/* ---------- shelter: racks, plates, lamps ---------- */
+.battle{background:radial-gradient(ellipse 60% 40% at 12% -8%, rgba(255,42,24,.13), transparent 60%), linear-gradient(#0d1211,#080b0a)}
+.radio,.side,.lnch{background:linear-gradient(90deg, rgba(0,0,0,.35), transparent 10px, transparent calc(100% - 10px), rgba(0,0,0,.35)), #0f1514}
+.ph{background:linear-gradient(#1a2220,#121816); border-top:1px solid #29332f; border-bottom:1px solid #050706; color:#7d8c86; text-shadow:0 1px 0 #000}
+.strip{background:linear-gradient(#1b2321,#111715); border-bottom:2px solid #050706; box-shadow:0 1px 0 #2a3430}
+.lamps{display:inline-flex; gap:3px}
+.lamps i{font-style:normal; font-family:var(--f-disp); font-weight:700; font-size:12px; letter-spacing:.06em; min-width:22px; text-align:center; padding:2px 6px; border-radius:2px; background:#121816; color:#3a4542; border:1px solid #000; box-shadow:inset 0 1px 3px rgba(0,0,0,.9)}
+.lamps i.on{color:#111; box-shadow:0 0 12px var(--glow), inset 0 1px 0 rgba(255,255,255,.4)}
+.lamps i.on[data-v=WHITE]{background:#e9eee7; --glow:rgba(233,238,231,.55)}
+.lamps i.on[data-v=YELLOW],.lamps i.on[data-v=TIGHT]{background:var(--amber); --glow:rgba(242,165,58,.6)}
+.lamps i.on[data-v=RED],.lamps i.on[data-v=FREE]{background:var(--red); color:#fff; --glow:rgba(255,75,60,.65)}
+.lamps i.on[data-v=HOLD]{background:var(--green); --glow:rgba(134,217,147,.55)}
+.cf{font-family:var(--f-disp); font-weight:800; letter-spacing:.12em; color:#fff; background:var(--red); padding:2px 8px; border-radius:2px; box-shadow:0 0 14px rgba(255,75,60,.7); animation:pulse .8s infinite}
+.ls{background:linear-gradient(#18201e,#111715); border-color:#2b3532}
+.engage{box-shadow:inset 0 0 0 1px rgba(0,0,0,.6), 0 0 18px rgba(255,75,60,.12)}
+.brief .objs{font-size:14px; gap:6px}
+.aar .objs{margin-top:8px; font-size:14px; gap:6px}
+@media (max-width:820px){
+  .scope-wrap{padding:5px}
+  .crt{border-radius:10px}
+  .plate{display:none}
+  .lamps.wcs i{min-width:0; padding:2px 4px; font-size:10.5px}
+  .coach{left:8px; right:8px; width:auto; bottom:8px; max-height:60%}
+}

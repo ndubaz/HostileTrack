@@ -111,18 +111,21 @@ function terrainImg(mk){
   const ctx = c.getContext('2d'), img = ctx.createImageData(N, N), hg = new Float32Array(N * N);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) hg[j * N + i] = H.heightAt(map, -200 + i + .5, 200 - j - .5);
   const at = (i, j) => hg[Math.max(0, Math.min(N - 1, j)) * N + Math.max(0, Math.min(N - 1, i))];
-  const L0 = P.legacy ? [3, 20, 7] : [24, 31, 27], L1 = P.legacy ? [10, 58, 18] : [66, 68, 54], SEA = P.legacy ? [1, 10, 3] : [9, 22, 30], CO = P.legacy ? [30, 120, 40] : [70, 104, 110];
+  // dark, desaturated tactical map: hillshade + contour lines every 200 m
+  const L0 = P.legacy ? [2, 14, 5] : [15, 20, 19], L1 = P.legacy ? [8, 40, 13] : [40, 44, 38], SEA = P.legacy ? [1, 6, 2] : [6, 13, 18], CO = P.legacy ? [40, 150, 55] : [92, 132, 138], CT = P.legacy ? [20, 80, 28] : [58, 70, 62];
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){
     const h = at(i, j), o = (j * N + i) * 4;
     if (h < 0){
       const coast = at(i + 1, j) >= 0 || at(i - 1, j) >= 0 || at(i, j + 1) >= 0 || at(i, j - 1) >= 0;
-      const col = coast ? CO : SEA, n = ((i * 7 + j * 13) % 5) * .6;
+      const col = coast ? CO : SEA, n = ((i * 7 + j * 13) % 5) * .4;
       img.data[o] = col[0] + n; img.data[o + 1] = col[1] + n; img.data[o + 2] = col[2] + n; img.data[o + 3] = 255; continue;
     }
     const dzx = at(i + 1, j) - at(i - 1, j), dzy = at(i, j - 1) - at(i, j + 1);
-    const l = Math.max(.35, Math.min(1.35, 1 + (-dzx + dzy) * 2.2));
+    const l = Math.max(.45, Math.min(1.5, 1 + (-dzx + dzy) * 2.6));
     const k = Math.min(1, h / 1.6);
-    for (let q = 0; q < 3; q++) img.data[o + q] = Math.min(255, (L0[q] + (L1[q] - L0[q]) * k) * l);
+    const ci = .45, c0 = Math.floor(h / ci), contour = h > .2 && (c0 !== Math.floor(at(i + 1, j) / ci) || c0 !== Math.floor(at(i, j + 1) / ci));
+    const steep = Math.abs(dzx) + Math.abs(dzy) > .18;
+    for (let q = 0; q < 3; q++){ const base = Math.min(255, (L0[q] + (L1[q] - L0[q]) * k) * l); img.data[o + q] = contour && !steep ? base * .55 + CT[q] * .45 : base; }
     img.data[o + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
@@ -144,7 +147,6 @@ function proj(v, x, y, z = 0){
   return [v.W / 2 + dx * v.s * f, v.H * .62 - (dy * c + zd(z) * sn) * v.s * f, f];
 }
 function unproj(v, px, py){ return {x:v.cx + (px - v.W / 2) / v.s, y:v.cy - (py - v.H / 2) / v.s}; }
-
 function polyline(ctx, v, pts, z = 0){ ctx.beginPath(); pts.forEach((p, i) => { const q = proj(v, p[0] ?? p.x, p[1] ?? p.y, z); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); }
 function circleW(ctx, v, cx, cy, r, z = 0){ ctx.beginPath(); for (let a = 0; a <= 72; a++){ const p = H.polar(a * 5, r, {x:cx, y:cy}), q = proj(v, p.x, p.y, z); a ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); } }
 const lowCache = {};
@@ -154,62 +156,56 @@ function lowLine(map, mk, bx, by, ptl){
   return (lowCache[key] = pts);
 }
 
-function drawScope(ctx, v, M, now){
+// static layer: terrain, overlays, rings, fan, assets, battery
+function drawBase(ctx, v, M){
   const P = pal(), map = MAP[M.mapKey];
   ctx.save();
-  ctx.fillStyle = map.landDefault ? (P.legacy ? '#03160a' : '#181f1b') : P.sea; ctx.fillRect(0, 0, v.W, v.H);
-  // terrain
+  ctx.fillStyle = map.landDefault ? (P.legacy ? '#020c04' : '#111614') : P.sea; ctx.fillRect(0, 0, v.W, v.H);
   if (!v.tilt){
     const a = proj(v, -200, 200), img = terrainImg(M.mapKey);
-    ctx.imageSmoothingEnabled = true; ctx.globalAlpha = .95; ctx.drawImage(img, a[0], a[1], 400 * v.s, 400 * v.s); ctx.globalAlpha = 1;
+    ctx.imageSmoothingEnabled = true; ctx.globalAlpha = .9; ctx.drawImage(img, a[0], a[1], 400 * v.s, 400 * v.s); ctx.globalAlpha = 1;
   } else {
     ctx.fillStyle = P.bg; ctx.fillRect(0, 0, v.W, v.H);
-    const g = heightGrid(M.mapKey); ctx.lineWidth = 1;
-    for (let j = 0; j <= 80; j += 1){ ctx.beginPath(); let st = false; for (let i = 0; i <= 80; i++){ const h = g[j][i], q = proj(v, -200 + i * 5, 200 - j * 5, Math.max(0, h) * 1.2); if (q[1] < -50 || q[1] > v.H + 50){ st = false; continue; } st ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); st = true; } ctx.strokeStyle = P.grid; ctx.stroke(); }
-    for (let i = 0; i <= 80; i += 2){ ctx.beginPath(); let st = false; for (let j = 0; j <= 80; j++){ const h = g[j][i], q = proj(v, -200 + i * 5, 200 - j * 5, Math.max(0, h) * 1.2); if (q[1] < -50 || q[1] > v.H + 50){ st = false; continue; } st ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); st = true; } ctx.strokeStyle = P.grid; ctx.stroke(); }
+    const g = heightGrid(M.mapKey); ctx.lineWidth = 1; ctx.strokeStyle = P.grid;
+    for (let j = 0; j <= 80; j++){ ctx.beginPath(); let st = false; for (let i = 0; i <= 80; i++){ const h = g[j][i], q = proj(v, -200 + i * 5, 200 - j * 5, Math.max(0, h) * 1.2); if (q[1] < -50 || q[1] > v.H + 50){ st = false; continue; } st ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); st = true; } ctx.stroke(); }
+    for (let i = 0; i <= 80; i += 2){ ctx.beginPath(); let st = false; for (let j = 0; j <= 80; j++){ const h = g[j][i], q = proj(v, -200 + i * 5, 200 - j * 5, Math.max(0, h) * 1.2); if (q[1] < -50 || q[1] > v.H + 50){ st = false; continue; } st ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); st = true; } ctx.stroke(); }
     ctx.strokeStyle = P.dim; ctx.globalAlpha = .7; for (const poly of map.polys || []){ polyline(ctx, v, poly.concat([poly[0]])); ctx.stroke(); } ctx.globalAlpha = 1;
   }
   ctx.font = `10px ${P.mono}`; ctx.textAlign = 'left';
-  // rivers, borders
-  for (const r of map.rivers || []){ polyline(ctx, v, r.pts); ctx.strokeStyle = P.legacy ? '#0c3a14' : '#1d3d4a'; ctx.lineWidth = Math.max(1.5, (r.w || 1) * v.s); ctx.stroke(); }
+  for (const r of map.rivers || []){ polyline(ctx, v, r.pts); ctx.strokeStyle = P.legacy ? '#0a3010' : '#183440'; ctx.lineWidth = Math.max(1.5, (r.w || 1) * v.s); ctx.stroke(); }
   ctx.lineWidth = 1;
-  for (const b of map.borders || []){ polyline(ctx, v, b.pts); ctx.setLineDash([2, 5]); ctx.strokeStyle = P.dim; ctx.globalAlpha = .7; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; const m = b.pts[1], q = proj(v, m[0], m[1]); ctx.fillStyle = P.faint; ctx.fillText(b.name, q[0] + 4, q[1] - 4); }
-  // airways, corridors
-  for (const a of map.airways || []){ polyline(ctx, v, a.pts); ctx.setLineDash([6, 6]); ctx.strokeStyle = P.green; ctx.globalAlpha = .28; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = .6; const m = a.pts[0], n = a.pts[1], q = proj(v, (m[0] * 2 + n[0]) / 3, (m[1] * 2 + n[1]) / 3); ctx.fillStyle = P.green; ctx.fillText(a.name, q[0] + 4, q[1] - 4); ctx.globalAlpha = 1; }
-  for (const c of map.corridors || []){ polyline(ctx, v, c.pts); ctx.strokeStyle = P.cyan; ctx.globalAlpha = .07; ctx.lineWidth = Math.max(6, 12 * v.s * (v.tilt ? .6 : 1)); ctx.stroke(); ctx.globalAlpha = .35; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); const m = c.pts[0], q = proj(v, m[0], m[1]); ctx.fillStyle = P.cyan; ctx.globalAlpha = .7; ctx.fillText(c.name, q[0] + 6, q[1]); ctx.globalAlpha = 1; }
+  for (const b of map.borders || []){ polyline(ctx, v, b.pts); ctx.setLineDash([2, 5]); ctx.strokeStyle = P.dim; ctx.globalAlpha = .6; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; const m = b.pts[1], q = proj(v, m[0], m[1]); ctx.fillStyle = P.faint; ctx.fillText(b.name, q[0] + 4, q[1] - 4); }
+  for (const a of map.airways || []){ polyline(ctx, v, a.pts); ctx.setLineDash([6, 6]); ctx.strokeStyle = P.green; ctx.globalAlpha = .3; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = .65; const m = a.pts[0], n = a.pts[1], q = proj(v, (m[0] * 2 + n[0]) / 3, (m[1] * 2 + n[1]) / 3); ctx.fillStyle = P.green; ctx.fillText(a.name, q[0] + 4, q[1] - 4); ctx.globalAlpha = 1; }
+  for (const c of map.corridors || []){ polyline(ctx, v, c.pts); ctx.strokeStyle = P.cyan; ctx.globalAlpha = .07; ctx.lineWidth = Math.max(6, 12 * v.s * (v.tilt ? .6 : 1)); ctx.stroke(); ctx.globalAlpha = .38; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); const m = c.pts[0], n = c.pts[1], q = proj(v, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2); ctx.fillStyle = P.cyan; ctx.globalAlpha = .75; ctx.fillText(c.name, q[0] + 8, q[1]); ctx.globalAlpha = 1; }
   ctx.fillStyle = P.faint; ctx.font = `600 10px ${P.mono}`;
   for (const l of map.labels || []){ const q = proj(v, l[1], l[2]); ctx.fillText(l[0], q[0], q[1]); }
   const B = M.bat;
-  // range rings & bearing ticks
   ctx.strokeStyle = P.line2; ctx.lineWidth = 1; ctx.font = `10px ${P.mono}`; ctx.fillStyle = P.faint;
-  for (const r of [25, 50, 100, 150]){ circleW(ctx, v, B.x, B.y, r); ctx.globalAlpha = .55; ctx.stroke(); ctx.globalAlpha = 1; const q = proj(v, B.x, B.y + r); ctx.fillText(r + '', q[0] + 3, q[1] + 11); }
-  if (!v.tilt) for (let a = 0; a < 360; a += 30){ const p1 = H.polar(a, 150, B), p2 = H.polar(a, 158, B), q1 = proj(v, p1.x, p1.y), q2 = proj(v, p2.x, p2.y); ctx.beginPath(); ctx.moveTo(q1[0], q1[1]); ctx.lineTo(q2[0], q2[1]); ctx.strokeStyle = P.line2; ctx.stroke(); const q3 = proj(v, H.polar(a, 166, B).x, H.polar(a, 166, B).y); ctx.textAlign = 'center'; ctx.fillText(pad(a, 3), q3[0], q3[1] + 3); ctx.textAlign = 'left'; }
-  // neighbor fans
+  for (const r of [25, 50, 100, 150]){ circleW(ctx, v, B.x, B.y, r); ctx.globalAlpha = .6; ctx.stroke(); ctx.globalAlpha = 1; const q = proj(v, B.x, B.y + r); ctx.fillText(r + '', q[0] + 3, q[1] + 11); }
+  if (!v.tilt){
+    for (let a = 0; a < 360; a += 10){ const big = a % 30 === 0, p1 = H.polar(a, big ? 150 : 154, B), p2 = H.polar(a, 158, B), q1 = proj(v, p1.x, p1.y), q2 = proj(v, p2.x, p2.y); ctx.beginPath(); ctx.moveTo(q1[0], q1[1]); ctx.lineTo(q2[0], q2[1]); ctx.strokeStyle = P.line2; ctx.stroke(); if (big){ const p3 = H.polar(a, 166, B), q3 = proj(v, p3.x, p3.y); ctx.textAlign = 'center'; ctx.fillText(pad(a, 3), q3[0], q3[1] + 3); ctx.textAlign = 'left'; } }
+  }
   for (const nb of M.neighbors || []){
     const pts = [[nb.x, nb.y]]; for (let a = nb.ptl - 60; a <= nb.ptl + 60.1; a += 4){ const p = H.polar(a, 150, nb); pts.push([p.x, p.y]); } pts.push([nb.x, nb.y]);
     polyline(ctx, v, pts); ctx.setLineDash([4, 6]); ctx.strokeStyle = nb.on ? P.violet : P.faint; ctx.globalAlpha = .55; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     const q = proj(v, nb.x, nb.y); ctx.fillStyle = nb.on ? P.violet : P.faint; ctx.fillRect(q[0] - 3, q[1] - 3, 6, 6); ctx.fillText(nb.name + (nb.on ? '' : ' · OFF'), q[0] + 6, q[1] - 6);
   }
-  // own coverage fan
   if (M.showFan !== false){
     const ptl = M.ptlPreview != null ? M.ptlPreview : B.ptl;
     const pts = [[B.x, B.y]]; for (let a = ptl - 60; a <= ptl + 60.01; a += 2){ const p = H.polar(a, H.RADAR.rmax, B); pts.push([p.x, p.y]); } pts.push([B.x, B.y]);
-    polyline(ctx, v, pts); ctx.fillStyle = B.on === false ? 'rgba(120,120,120,.04)' : (P.legacy ? 'rgba(80,255,120,.05)' : 'rgba(82,205,224,.055)'); ctx.fill();
-    ctx.strokeStyle = B.on === false ? P.faint : P.cyan; ctx.globalAlpha = .45; ctx.stroke(); ctx.globalAlpha = 1;
-    const low = lowLine(map, M.mapKey, B.x, B.y, ptl); polyline(ctx, v, low); ctx.setLineDash([3, 4]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .55; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
-    const lp = low[Math.floor(low.length * .8)], lq = proj(v, lp[0], lp[1]); ctx.fillStyle = P.amber; ctx.globalAlpha = .7; ctx.fillText('100 m LIMIT', lq[0] + 4, lq[1] - 3); ctx.globalAlpha = 1;
-    const pe = H.polar(ptl, H.RADAR.rmax, B); polyline(ctx, v, [[B.x, B.y], [pe.x, pe.y]]); ctx.setLineDash([10, 6]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .6; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
-    const pq = proj(v, H.polar(ptl, 130, B).x, H.polar(ptl, 130, B).y); ctx.fillStyle = P.amber; ctx.font = `600 11px ${P.mono}`; ctx.fillText('PTL ' + pad(Math.round(ptl) % 360, 3), pq[0] + 6, pq[1]);
-    // sweep
-    if (B.on !== false && now){ const sw = ptl - 60 + ((now / 30) % 120); const se = H.polar(sw, H.RADAR.rmax, B), q0 = proj(v, B.x, B.y), q1 = proj(v, se.x, se.y); const gr = ctx.createLinearGradient(q0[0], q0[1], q1[0], q1[1]); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, P.legacy ? 'rgba(120,255,140,.35)' : 'rgba(82,205,224,.28)'); ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(q1[0], q1[1]); ctx.strokeStyle = gr; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1; }
+    polyline(ctx, v, pts);
+    const q0 = proj(v, B.x, B.y), gr = ctx.createRadialGradient(q0[0], q0[1], 0, q0[0], q0[1], H.RADAR.rmax * v.s);
+    const on = B.on !== false, cc = P.legacy ? '90,255,130' : '82,205,224';
+    gr.addColorStop(0, on ? `rgba(${cc},.10)` : 'rgba(120,120,120,.05)'); gr.addColorStop(1, on ? `rgba(${cc},.025)` : 'rgba(120,120,120,.02)');
+    ctx.fillStyle = gr; ctx.fill();
+    ctx.strokeStyle = on ? P.cyan : P.faint; ctx.globalAlpha = .5; ctx.stroke(); ctx.globalAlpha = 1;
+    const low = lowLine(map, M.mapKey, B.x, B.y, ptl); polyline(ctx, v, low); ctx.setLineDash([3, 4]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .6; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    const lp = low[Math.floor(low.length * .8)], lq = proj(v, lp[0], lp[1]); ctx.fillStyle = P.amber; ctx.globalAlpha = .75; ctx.fillText('100 m LIMIT', lq[0] + 4, lq[1] - 3); ctx.globalAlpha = 1;
+    const pe = H.polar(ptl, H.RADAR.rmax, B); polyline(ctx, v, [[B.x, B.y], [pe.x, pe.y]]); ctx.setLineDash([10, 6]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .55; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    const pq = proj(v, H.polar(ptl, 130, B).x, H.polar(ptl, 130, B).y); ctx.fillStyle = P.amber; ctx.font = `600 11px ${P.mono}`; ctx.fillText('PTL ' + pad(Math.round(ptl) % 360, 3), pq[0] + 6, pq[1]); ctx.font = `10px ${P.mono}`;
   }
-  // threat axis (brief)
-  if (M.axis){ for (const a of M.axis){ const p1 = H.polar(a, 120, B), p2 = H.polar(a, 165, B); polyline(ctx, v, [[p2.x, p2.y], [p1.x, p1.y]]); ctx.strokeStyle = P.red; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1; const q = proj(v, p1.x, p1.y); ctx.fillStyle = P.red; ctx.fillText('THREAT ' + pad(a, 3), q[0] + 4, q[1]); } }
-  // jammer strobes
-  for (const j of M.jammers || []){ const b = H.brgOf(j.x - B.x, j.y - B.y), e = H.polar(b, 170, B); polyline(ctx, v, [[B.x, B.y], [e.x, e.y]]); ctx.strokeStyle = P.red; ctx.globalAlpha = .25; ctx.lineWidth = Math.max(4, 14 * v.s * .3); ctx.setLineDash([2, 3]); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1; ctx.globalAlpha = 1; }
-  // sites (brief)
+  if (M.axis){ for (const a of M.axis){ const p1 = H.polar(a, 120, B), p2 = H.polar(a, 165, B); polyline(ctx, v, [[p2.x, p2.y], [p1.x, p1.y]]); ctx.strokeStyle = P.red; ctx.lineWidth = 2.5; ctx.stroke(); ctx.lineWidth = 1; const q = proj(v, p1.x, p1.y); ctx.fillStyle = P.red; ctx.fillText('THREAT ' + pad(a, 3), q[0] + 4, q[1]); } }
   if (M.sites) M.sites.forEach((s, i) => { const q = proj(v, s.x, s.y); ctx.strokeStyle = i === M.siteSel ? P.amber : P.dim; ctx.beginPath(); ctx.arc(q[0], q[1], 7, 0, 7); ctx.stroke(); ctx.fillStyle = i === M.siteSel ? P.amber : P.dim; ctx.fillText(String.fromCharCode(65 + i), q[0] - 3, q[1] + 3.5); });
-  // assets
   ctx.font = `10px ${P.mono}`; const lbls = [];
   for (const a of M.assets){
     const q = proj(v, a.x, a.y), hp = a.hp / a.hpMax, col = a.hp <= 0 ? P.red : hp < .6 ? P.amber : P.text;
@@ -218,29 +214,57 @@ function drawScope(ctx, v, M, now){
     ctx.fillStyle = col; ctx.fillText(a.pri, q[0] - 2.8, q[1] + 3.5);
     if (v.s > .9 || M.labelsAlways){ const t = a.name.toUpperCase(), w = ctx.measureText(t).width, r = {x:q[0] + 8, y:q[1] - 6, w, h:11};
       if (!lbls.some(o => r.x < o.x + o.w && o.x < r.x + r.w && r.y < o.y + o.h && o.y < r.y + r.h)){ lbls.push(r); ctx.fillStyle = P.dim; ctx.fillText(t, r.x, q[1] + 3); } }
-    if (M.cov && M.cov[a.id] != null){ ctx.strokeStyle = M.cov[a.id] ? P.green : P.red; ctx.beginPath(); ctx.arc(q[0], q[1], 10, 0, 7); ctx.stroke(); }
+    if (M.cov && M.cov[a.id] != null){ ctx.strokeStyle = M.cov[a.id] ? P.green : P.red; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(q[0], q[1], 10, 0, 7); ctx.stroke(); ctx.lineWidth = 1; }
   }
-  // battery & launchers
-  {
-    const q = proj(v, B.x, B.y);
-    for (const L of M.launchers || []){ const lq = proj(v, L.x, L.y); ctx.fillStyle = L.dead ? P.red : P.dim; ctx.fillRect(lq[0] - 2, lq[1] - 2, 4, 4); }
-    ctx.fillStyle = B.alive === false ? P.red : (B.on === false ? P.dim : P.cyan); ctx.beginPath(); ctx.moveTo(q[0], q[1] - 7); ctx.lineTo(q[0] + 6, q[1] + 5); ctx.lineTo(q[0] - 6, q[1] + 5); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = P.text; ctx.font = `600 10px ${P.mono}`; ctx.fillText(M.bty || '', q[0] + 9, q[1] + 12);
+  const q = proj(v, B.x, B.y);
+  for (const L of M.launchers || []){ const lq = proj(v, L.x, L.y); ctx.fillStyle = L.dead ? P.red : P.dim; ctx.fillRect(lq[0] - 2, lq[1] - 2, 4, 4); }
+  ctx.fillStyle = B.alive === false ? P.red : (B.on === false ? P.dim : P.cyan); ctx.beginPath(); ctx.moveTo(q[0], q[1] - 7); ctx.lineTo(q[0] + 6, q[1] + 5); ctx.lineTo(q[0] - 6, q[1] + 5); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = P.text; ctx.font = `600 10px ${P.mono}`; ctx.fillText(M.bty || '', q[0] + 9, q[1] + 12);
+  for (const sc of M.scars || []){ const s = proj(v, sc.x, sc.y); ctx.strokeStyle = sc.harmless ? P.faint : P.red; ctx.globalAlpha = .7; ctx.beginPath(); ctx.arc(s[0], s[1], 3, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+  ctx.restore();
+}
+
+// phosphor layer: sweep, clutter, tracks, missiles, effects
+function drawLive(ctx, v, M, now, glow){
+  const P = pal(), B = M.bat;
+  ctx.save();
+  const gl = (c, b) => { if (glow){ ctx.shadowColor = c; ctx.shadowBlur = b; } };
+  const ng = () => { ctx.shadowBlur = 0; };
+  for (const j of M.jammers || []){ const b = H.brgOf(j.x - B.x, j.y - B.y), e = H.polar(b, 170, B); polyline(ctx, v, [[B.x, B.y], [e.x, e.y]]); ctx.strokeStyle = P.red; ctx.globalAlpha = .18 + Math.random() * .12; ctx.lineWidth = Math.max(4, 14 * v.s * .3); ctx.setLineDash([2, 3]); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1; ctx.globalAlpha = 1; }
+  if (M.showFan !== false && B.on !== false && now){
+    const ptl = B.ptl, ph = (now / 2400) % 2, dir = ph < 1 ? 1 : -1, f = ph < 1 ? ph : 2 - ph, sw = ptl - 60 + f * 120;
+    const q0 = proj(v, B.x, B.y), sc = P.legacy ? '140,255,150' : '110,225,240';
+    for (let k = 14; k >= 0; k--){ // afterglow: wedges fading behind the beam
+      const a0 = sw - dir * (k + 1) * 1.4, a1 = sw - dir * k * 1.4;
+      if (Math.abs(H.angDiff(a0, ptl)) > 60 || Math.abs(H.angDiff(a1, ptl)) > 60) continue;
+      const pa = H.polar(a0, H.RADAR.rmax, B), pb = H.polar(a1, H.RADAR.rmax, B), qa = proj(v, pa.x, pa.y), qb = proj(v, pb.x, pb.y);
+      ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(qa[0], qa[1]); ctx.lineTo(qb[0], qb[1]); ctx.closePath();
+      ctx.fillStyle = `rgba(${sc},${(.13 * (1 - k / 15)).toFixed(3)})`; ctx.fill();
+    }
+    const se = H.polar(sw, H.RADAR.rmax, B), q1 = proj(v, se.x, se.y);
+    ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(q1[0], q1[1]); ctx.strokeStyle = `rgba(${sc},.6)`; ctx.lineWidth = 1.3; gl(P.cyan, 6); ctx.stroke(); ng(); ctx.lineWidth = 1;
+    if (M.clutter && !v.tilt){ // raw video: returns near the radar and on ridges, painted by the beam and decaying
+      const C = M.clutter;
+      for (let k = 0; k < 3; k++){ const r = Math.random() ** 2 * 24 + 1, p = H.polar(sw + (Math.random() - .5) * 4, r, B); C.push({x:p.x, y:p.y, t0:now}); }
+      for (const rd of MAP[M.mapKey].ridges || []){ const t = Math.random(), x = rd.a[0] + (rd.b[0] - rd.a[0]) * t, y = rd.a[1] + (rd.b[1] - rd.a[1]) * t; const b = H.brgOf(x - B.x, y - B.y), d = Math.hypot(x - B.x, y - B.y); if (d < 100 && Math.abs(H.angDiff(b, sw)) < 3 && Math.abs(H.angDiff(b, ptl)) <= 60) C.push({x:x + (Math.random() - .5) * 2, y:y + (Math.random() - .5) * 2, t0:now}); }
+      while (C.length && now - C[0].t0 > 1800) C.shift();
+      for (const c of C){ const s = proj(v, c.x, c.y); ctx.fillStyle = `rgba(${sc},${(.5 * (1 - (now - c.t0) / 1800)).toFixed(3)})`; ctx.fillRect(s[0] - .8, s[1] - .8, 1.8, 1.8); }
+    }
   }
-  // tracks
   const hits = [];
   for (const e of M.ents){
     if (!e.trk){ if (M.truth){ const q = proj(v, e.x, e.y, e.z); ctx.fillStyle = e.truth === 'H' ? P.red : P.faint; ctx.globalAlpha = .45; ctx.beginPath(); ctx.arc(q[0], q[1], 2.5, 0, 7); ctx.fill(); ctx.fillText(e.kind, q[0] + 5, q[1] - 4); ctx.globalAlpha = 1; } continue; }
     const k = e.trk, col = idCol(k.id, P), q = proj(v, e.x, e.y, e.z);
     if (q[0] < -40 || q[0] > v.W + 40 || q[1] < -40 || q[1] > v.H + 40) continue;
     hits.push({uid:e.uid, x:q[0], y:q[1]});
-    ctx.globalAlpha = k.remote ? .55 : 1;
-    if (v.tilt){ const g0 = proj(v, e.x, e.y, 0); ctx.beginPath(); ctx.moveTo(g0[0], g0[1]); ctx.lineTo(q[0], q[1]); ctx.strokeStyle = col; ctx.globalAlpha *= .35; ctx.stroke(); ctx.globalAlpha = k.remote ? .55 : 1; ctx.fillStyle = col; ctx.fillRect(g0[0] - 1, g0[1] - 1, 2, 2); }
-    if (e.hist){ ctx.fillStyle = col; e.hist.forEach((h, i) => { const hq = proj(v, h[0], h[1], h[2]); ctx.globalAlpha = (k.remote ? .3 : .5) * (i + 1) / e.hist.length; ctx.fillRect(hq[0] - 1, hq[1] - 1, 2, 2); }); ctx.globalAlpha = k.remote ? .55 : 1; }
-    if (e.impact && k.cls){ const iq = proj(v, e.impact.x, e.impact.y), dal = e.dal; ctx.strokeStyle = dal ? P.red : P.dim; ctx.setLineDash([2, 4]); const g0 = proj(v, e.x, e.y, 0); ctx.beginPath(); ctx.moveTo(g0[0], g0[1]); ctx.lineTo(iq[0], iq[1]); ctx.globalAlpha = .4; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; const r = Math.max(5, 2.5 * v.s * iq[2]); ctx.beginPath(); ctx.arc(iq[0], iq[1], r, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.moveTo(iq[0] - 4, iq[1] - 4); ctx.lineTo(iq[0] + 4, iq[1] + 4); ctx.moveTo(iq[0] + 4, iq[1] - 4); ctx.lineTo(iq[0] - 4, iq[1] + 4); ctx.stroke(); }
+    const al = k.remote ? .55 : 1; ctx.globalAlpha = al;
+    if (v.tilt){ const g0 = proj(v, e.x, e.y, 0); ctx.beginPath(); ctx.moveTo(g0[0], g0[1]); ctx.lineTo(q[0], q[1]); ctx.strokeStyle = col; ctx.globalAlpha = al * .35; ctx.stroke(); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.fillRect(g0[0] - 1, g0[1] - 1, 2, 2); }
+    if (e.hist){ ctx.fillStyle = col; e.hist.forEach((h, i) => { const hq = proj(v, h[0], h[1], h[2]); ctx.globalAlpha = al * .5 * (i + 1) / e.hist.length; ctx.fillRect(hq[0] - 1, hq[1] - 1, 2, 2); }); ctx.globalAlpha = al; }
+    if (e.impact && k.cls){ const iq = proj(v, e.impact.x, e.impact.y), dal = e.dal; ctx.strokeStyle = dal ? P.red : P.dim; ctx.setLineDash([2, 4]); const g0 = proj(v, e.x, e.y, 0); ctx.beginPath(); ctx.moveTo(g0[0], g0[1]); ctx.lineTo(iq[0], iq[1]); ctx.globalAlpha = .45; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; const r = Math.max(5, 2.5 * v.s * iq[2]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(iq[0], iq[1], r, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.moveTo(iq[0] - 4, iq[1] - 4); ctx.lineTo(iq[0] + 4, iq[1] + 4); ctx.moveTo(iq[0] + 4, iq[1] - 4); ctx.lineTo(iq[0] - 4, iq[1] + 4); ctx.stroke(); ctx.lineWidth = 1; ctx.globalAlpha = al; }
     const lt = e.ball ? 15 : 60, l2 = proj(v, e.x + e.vx * lt, e.y + e.vy * lt, Math.max(0, e.z + (e.vz || 0) * lt));
+    gl(col, 7);
     ctx.beginPath(); ctx.moveTo(q[0], q[1]); ctx.lineTo(l2[0], l2[1]); ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.stroke();
-    const r = 7; ctx.lineWidth = 1.8; ctx.strokeStyle = col; if (k.remote || k.id === 'PND') ctx.setLineDash([2, 2]);
+    const r = 7; ctx.lineWidth = 1.9; if (k.remote || k.id === 'PND') ctx.setLineDash([2, 2]);
     ctx.beginPath();
     if (e.ball){ ctx.moveTo(q[0], q[1] - r); ctx.lineTo(q[0] + r, q[1]); ctx.lineTo(q[0], q[1] + r); ctx.lineTo(q[0] - r, q[1]); ctx.closePath(); }
     else if (k.id === 'HOS' || k.id === 'SUS'){ ctx.moveTo(q[0] - r, q[1] + 1); ctx.lineTo(q[0], q[1] - r); ctx.lineTo(q[0] + r, q[1] + 1); }
@@ -248,7 +272,7 @@ function drawScope(ctx, v, M, now){
     else if (k.id === 'NEU'){ ctx.moveTo(q[0] - r, q[1] + 1); ctx.lineTo(q[0] - r, q[1] - r); ctx.lineTo(q[0] + r, q[1] - r); ctx.lineTo(q[0] + r, q[1] + 1); }
     else { ctx.moveTo(q[0] - r, q[1] + 1); ctx.lineTo(q[0] - r, q[1] - r + 3); ctx.quadraticCurveTo(q[0] - r, q[1] - r, q[0] - r + 3, q[1] - r); ctx.lineTo(q[0] + r - 3, q[1] - r); ctx.quadraticCurveTo(q[0] + r, q[1] - r, q[0] + r, q[1] - r + 3); ctx.lineTo(q[0] + r, q[1] + 1); }
     ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
-    ctx.fillStyle = col; ctx.fillRect(q[0] - 1.2, q[1] - 1.2, 2.4, 2.4);
+    ctx.fillStyle = col; ctx.fillRect(q[0] - 1.3, q[1] - 1.3, 2.6, 2.6); ng();
     ctx.font = `600 10.5px ${P.mono}`; ctx.fillText(k.num, q[0] + 9, q[1] - 5);
     ctx.font = `10px ${P.mono}`; ctx.fillStyle = P.dim;
     const altTxt = e.ball ? (e.z.toFixed(0) + 'K') : (e.z < 1 ? Math.round(e.z * 3281) + 'FT' : 'FL' + pad(Math.round(e.z * 32.81), 3));
@@ -257,24 +281,23 @@ function drawScope(ctx, v, M, now){
     if (e.uid === M.hooked){ ctx.strokeStyle = P.text; ctx.lineWidth = 1.2; const b = 12; ctx.beginPath(); ctx.moveTo(q[0] - b, q[1] - b + 4); ctx.lineTo(q[0] - b, q[1] - b); ctx.lineTo(q[0] - b + 4, q[1] - b); ctx.moveTo(q[0] + b - 4, q[1] - b); ctx.lineTo(q[0] + b, q[1] - b); ctx.lineTo(q[0] + b, q[1] - b + 4); ctx.moveTo(q[0] + b, q[1] + b - 4); ctx.lineTo(q[0] + b, q[1] + b); ctx.lineTo(q[0] + b - 4, q[1] + b); ctx.moveTo(q[0] - b + 4, q[1] + b); ctx.lineTo(q[0] - b, q[1] + b); ctx.lineTo(q[0] - b, q[1] + b - 4); ctx.stroke(); ctx.lineWidth = 1; }
     ctx.globalAlpha = 1;
   }
-  // missiles
   for (const m of M.ms || []){
     const q = proj(v, m.x, m.y, m.z);
-    if (m.trail && m.trail.length > 1){ ctx.beginPath(); m.trail.forEach((t, i) => { const tq = proj(v, t[0], t[1], t[2]); i ? ctx.lineTo(tq[0], tq[1]) : ctx.moveTo(tq[0], tq[1]); }); ctx.lineTo(q[0], q[1]); ctx.strokeStyle = m.own ? P.red : P.violet; ctx.globalAlpha = .5; ctx.stroke(); ctx.globalAlpha = 1; }
-    ctx.fillStyle = m.own ? '#fff' : P.violet; ctx.beginPath(); ctx.arc(q[0], q[1], 2.2, 0, 7); ctx.fill();
+    if (m.trail && m.trail.length > 1){ ctx.beginPath(); m.trail.forEach((t, i) => { const tq = proj(v, t[0], t[1], t[2]); i ? ctx.lineTo(tq[0], tq[1]) : ctx.moveTo(tq[0], tq[1]); }); ctx.lineTo(q[0], q[1]); ctx.strokeStyle = m.own ? P.red : P.violet; ctx.globalAlpha = .55; ctx.stroke(); ctx.globalAlpha = 1; }
+    gl(m.own ? '#fff' : P.violet, 10); ctx.fillStyle = m.own ? '#fff' : P.violet; ctx.beginPath(); ctx.arc(q[0], q[1], 2.3, 0, 7); ctx.fill(); ng();
   }
-  // effects
   for (const fx of M.fx || []){
     const age = (now - fx.t0) / fx.dur; if (age < 0 || age > 1) continue;
     const q = proj(v, fx.x, fx.y, fx.z || 0), col = fx.k === 'kill' ? '#fff' : fx.k === 'impact' ? (fx.harmless ? P.dim : P.red) : fx.k === 'launch' ? P.amber : P.dim;
-    ctx.strokeStyle = col; ctx.globalAlpha = 1 - age; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q[0], q[1], 3 + age * (fx.k === 'impact' ? 26 : 16), 0, 7); ctx.stroke(); ctx.lineWidth = 1;
-    if (fx.k === 'kill' || fx.k === 'impact'){ ctx.fillStyle = col; ctx.globalAlpha = (1 - age) * .6; ctx.beginPath(); ctx.arc(q[0], q[1], 4 * (1 - age) + 1, 0, 7); ctx.fill(); }
-    ctx.globalAlpha = 1;
+    gl(col, 14); ctx.strokeStyle = col; ctx.globalAlpha = 1 - age; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q[0], q[1], 3 + age * (fx.k === 'impact' ? 26 : 16), 0, 7); ctx.stroke(); ctx.lineWidth = 1;
+    if (fx.k === 'kill' || fx.k === 'impact'){ ctx.fillStyle = col; ctx.globalAlpha = (1 - age) * .7; ctx.beginPath(); ctx.arc(q[0], q[1], 5 * (1 - age) + 1, 0, 7); ctx.fill(); }
+    ng(); ctx.globalAlpha = 1;
   }
-  for (const sc of M.scars || []){ const q = proj(v, sc.x, sc.y); ctx.strokeStyle = sc.harmless ? P.faint : P.red; ctx.globalAlpha = .6; ctx.beginPath(); ctx.arc(q[0], q[1], 3, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+  if (M.cursor){ const c = M.cursor; ctx.strokeStyle = P.text; ctx.globalAlpha = .5; ctx.beginPath(); ctx.moveTo(c.px - 9, c.py); ctx.lineTo(c.px - 3, c.py); ctx.moveTo(c.px + 3, c.py); ctx.lineTo(c.px + 9, c.py); ctx.moveTo(c.px, c.py - 9); ctx.lineTo(c.px, c.py - 3); ctx.moveTo(c.px, c.py + 3); ctx.lineTo(c.px, c.py + 9); ctx.stroke(); ctx.globalAlpha = 1; }
   ctx.restore();
   return hits;
 }
+function drawScope(ctx, v, M, now){ drawBase(ctx, v, M); return drawLive(ctx, v, M, now, false); }
 
 function sizeCanvas(cv){
   const r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -341,7 +364,9 @@ function openBrief(scn, camp){
   const W = s => s.split(' ');
   const ld = scn.launchers.map((L, i) => `<span>LS${i + 1} ${L[0] === 'MSE' ? L[1] + '× MSE' : L[0] === 'GEMT' ? L[2] + '× GEM-T' : L[1] + '× MSE + ' + L[2] + '× GEM-T'}</span>`).join('') + `<span>RESERVE ${scn.reserve.MSE} MSE · ${scn.reserve.GEMT} GEM-T</span>`;
   const campNote = camp ? `<p class="coach-brief">Campaign: launchers load from your stock (${camp.stock.MSE} MSE, ${camp.stock.GEMT} GEM-T). What you do not fire carries to the next battle.</p>` : '';
-  const tutNote = scn.tutorial && scn.tutorial.table === 1 ? `<p class="coach-brief"><b>Coach:</b> drag on the map to swing the Primary Target Line. Every asset ring must turn green and both red threat-axis marks must sit inside the fan. Try Site C to see how the hill masks low flyers.</p>` : '';
+  const tb = scn.tutorial && scn.tutorial.table, locked = !!scn.lockEmplace;
+  const tutNote = tb ? `<h3>How this table passes</h3><ul class="objs" id="bObj"></ul>${tb === 1 ? '<p class="coach-brief">Drag on the map to swing the PTL. Click a site button to move the battery. The checklist updates as you go.</p>' : ''}` : '';
+  const lockNote = locked ? `<p class="coach-brief">Range control has emplaced you at ${esc(scn.sites[0].name.split('· ')[1] || 'Site A')}, PTL ${pad(scn.ptl, 3)}°. Emplacement is fixed for this table.</p>` : '';
   $('#briefBody').innerHTML = `<div class="brief-wrap">
    <div>
      <button class="btn sm" type="button" id="bBack">← Back</button>
@@ -360,8 +385,8 @@ function openBrief(scn, camp){
    </div>
    <div>
      <h3 style="margin-top:0">Emplacement</h3>
-     <div class="sites" id="bSites">${scn.sites.map((s, i) => `<button type="button" class="tbtn${i === 0 ? ' on' : ''}" data-i="${i}">${esc(s.name)}</button>`).join('')}</div>
-     <div class="mapbox" id="bMapBox"><canvas id="bMap"></canvas><div class="maphint">DRAG TO SET PTL</div></div>
+     ${lockNote}<div class="sites" id="bSites" ${locked ? 'hidden' : ''}>${scn.sites.map((s, i) => `<button type="button" class="tbtn${i === 0 ? ' on' : ''}" data-i="${i}">${esc(s.name)}</button>`).join('')}</div>
+     <div class="mapbox" id="bMapBox"><canvas id="bMap"></canvas><div class="maphint">${locked ? 'EMPLACEMENT SET BY RANGE CONTROL' : 'DRAG TO SET PTL'}</div></div>
      <div class="cov" id="bCov"></div>
      ${tutNote}
      <h3>Crew settings</h3>
@@ -382,7 +407,7 @@ function openBrief(scn, camp){
   const cv = $('#bMap');
   const setFrom = ev => { const r = cv.getBoundingClientRect(), w = unproj(BR.view, ev.clientX - r.left, ev.clientY - r.top), s = scn.sites[BR.site]; BR.ptl = Math.round(H.brgOf(w.x - s.x, w.y - s.y)); briefDraw(); };
   let drag = false;
-  cv.onpointerdown = ev => { drag = true; cv.setPointerCapture(ev.pointerId); setFrom(ev); };
+  cv.onpointerdown = ev => { if (scn.lockEmplace) return; drag = true; cv.setPointerCapture(ev.pointerId); setFrom(ev); };
   cv.onpointermove = ev => { if (drag) setFrom(ev); };
   cv.onpointerup = cv.onpointercancel = () => { drag = false; };
   requestAnimationFrame(briefDraw);
@@ -401,6 +426,7 @@ function briefDraw(){
   cov.axis.forEach(x => lines.push(`<span class="${x.ok ? (x.reach < 30 ? 'warn' : 'ok') : 'no'}">THREAT AXIS ${pad(x.b, 3)}° ${x.ok ? 'COVERED' : 'OUTSIDE FAN'} · LOW-ALT REACH ${Math.round(x.reach)} km${x.reach < 30 ? ' · MASKED' : ''}</span>`));
   lines.push(`<span>PTL ${pad(BR.ptl, 3)}° · SECTOR ${pad((BR.ptl + 300) % 360, 3)}°–${pad((BR.ptl + 60) % 360, 3)}°</span>`);
   $('#bCov').innerHTML = lines.join('');
+  const bo = $('#bObj'); if (bo && scn.tutorial){ const r = HT_TRAIN.evaluate(scn.tutorial.table, null, {cover:cov}); bo.innerHTML = r.map(o => `<li class="${o.ok ? 'ok' : ''}"><i>${o.ok ? '✓' : '○'}</i><span>${esc(o.t)}</span></li>`).join(''); }
 }
 
 // ---------- battle ----------
@@ -421,7 +447,6 @@ function startBattle(){
   VO.stop();
   fitView(); renderLaunchers(true); updatePanels(true);
   cancelAnimationFrame(rafId); rafId = requestAnimationFrame(loop);
-  if (scn.tutorial && scn.tutorial.table === 1 && !S.cover.ok) setTimeout(() => toast('COACH', 'Your emplacement leaves an asset or threat axis uncovered. This table will not pass. End and re-brief, or watch what you miss.'), 800);
 }
 function fitView(){
   const cv = $('#scope'); const r = cv.getBoundingClientRect(); const m = Math.min(r.width, r.height);
@@ -437,8 +462,17 @@ function loop(now){
   }
   drain(now);
   const cv = $('#scope'), {W, H:Hh, dpr} = sizeCanvas(cv), ctx = cv.getContext('2d');
-  B.view.W = W; B.view.H = Hh; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  B.hits = drawScope(ctx, B.view, liveModel(now), now);
+  B.view.W = W; B.view.H = Hh;
+  const M = liveModel(now); M.cursor = B.cursor;
+  if (!B.baseCv){ B.baseCv = document.createElement('canvas'); B.clutter = []; }
+  if (B.baseCv.width !== cv.width || B.baseCv.height !== cv.height){ B.baseCv.width = cv.width; B.baseCv.height = cv.height; B.baseKey = ''; }
+  const v = B.view, P = pal();
+  const key = [v.cx.toFixed(2), v.cy.toFixed(2), v.s.toFixed(3), v.tilt, cv.width, cv.height, M.bat.ptl, M.bat.x, M.bat.y, M.bat.on, M.bat.alive, S.assets.map(a => a.hp).join(), S.launchers.map(L => L.dead ? 1 : 0).join(''), S.neighbors.map(n => n.on ? 1 : 0).join(''), B.scars.length, P.legacy].join('|');
+  if (key !== B.baseKey){ B.baseKey = key; const bctx = B.baseCv.getContext('2d'); bctx.setTransform(dpr, 0, 0, dpr, 0, 0); drawBase(bctx, v, M); }
+  M.clutter = B.clutter;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(B.baseCv, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  B.hits = drawLive(ctx, v, M, now, true);
   B.fx = B.fx.filter(f => now - f.t0 < f.dur);
   if (now - B.panelT > 150){ B.panelT = now; updatePanels(); coachTick(); }
   if (S.ended && !B.endShown){ B.endShown = true; setTimeout(endBattle, 1600); }
@@ -477,13 +511,14 @@ function drain(now){
 function toast(who, text){ const t = $('#toast'); t.innerHTML = `<b>${esc(who)}</b> · ${esc(text)}`; t.hidden = false; t.style.opacity = 1; clearTimeout(B.toastT); B.toastT = setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.hidden = true, 400); }, 6500); }
 
 const hookedEnt = () => B && B.hooked ? S.ents.find(e => e.uid === B.hooked && e.alive && e.trk && e.trk.est) : null;
-function hook(uid){ B.hooked = uid; AU.tone('click'); updatePanels(true); if (window.matchMedia('(max-width:820px)').matches && uid && !B.sheet) setSheet('side'); }
+function hook(uid){ B.hooked = uid; AU.tone('click'); if (uid && B.U){ const e = S.ents.find(x => x.uid === uid); if (e) B.U.hooked.kinds.add(e.kind); } updatePanels(true); if (window.matchMedia('(max-width:820px)').matches && uid && !B.sheet) setSheet('side'); }
 
 function updatePanels(force){
   if (!S) return;
   const q = H.threatQueue(S);
-  const sA = $('#sADW'); sA.textContent = S.adw; sA.className = 'chip c-' + S.adw;
-  const sW = $('#sWCS'); sW.textContent = S.wcs + (S.t < S.ceaseUntil ? ' · CEASE FIRE' : ''); sW.className = 'chip c-' + S.wcs;
+  $$('#sADW i').forEach(i => i.classList.toggle('on', i.dataset.v === S.adw));
+  $$('#sWCS i').forEach(i => i.classList.toggle('on', i.dataset.v === S.wcs));
+  $('#sCF').hidden = !(S.t < S.ceaseUntil);
   $$('#sMode button').forEach(b => b.classList.toggle('on', b.dataset.m === S.mode));
   $('#sEmcon').classList.toggle('on', S.bat.emcon);
   $('#sPtl').textContent = 'PTL ' + pad(Math.round(S.bat.ptl) % 360, 3);
@@ -494,9 +529,10 @@ function updatePanels(force){
   $('#sClock').textContent = 'T+' + fmtT(S.t);
   const d = new Date(Date.UTC(2026, 0, 1, 19, 40) + S.t * 1000 * 4); $('#sZulu').textContent = pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + 'Z · ' + S.scn.bty;
   const rs = $('#radarState'); const b = S.bat;
-  const rtxt = !b.alive ? 'RADAR DESTROYED' : b.displace > 0 ? `MARCH ORDER · ${Math.ceil(b.displace)} s` : b.reorient > 0 ? `REORIENTING · ${Math.ceil(b.reorient)} s` : b.epp > 0 ? 'POWER FAULT' : b.emcon ? 'EMCON · RADAR SILENT' : '';
+  const rtxt = B.coach && B.coach.held ? 'COACH · CLOCK STOPPED' : !b.alive ? 'RADAR DESTROYED' : b.displace > 0 ? `MARCH ORDER · ${Math.ceil(b.displace)} s` : b.reorient > 0 ? `REORIENTING · ${Math.ceil(b.reorient)} s` : b.epp > 0 ? 'POWER FAULT' : b.emcon ? 'EMCON · RADAR SILENT' : '';
   rs.hidden = !rtxt; rs.textContent = rtxt;
-  $('#scopeInfo').textContent = `${S.scn.place.toUpperCase()} · ${B.view.tilt ? '3D' : 'PLAN'} · ${(B.view.W / B.view.s).toFixed(0)} KM ACROSS · MODE ${S.mode}`;
+  let cur = ''; if (B.cursor && !B.view.tilt){ const w = unproj(B.view, B.cursor.px, B.cursor.py); cur = ` · CURSOR ${pad(Math.round(H.brgOf(w.x - S.bat.x, w.y - S.bat.y)) % 360, 3)}° ${Math.hypot(w.x - S.bat.x, w.y - S.bat.y).toFixed(1)} KM`; }
+  $('#scopeInfo').textContent = `${B.view.tilt ? '3D' : 'PLAN'} · ${(B.view.W / B.view.s).toFixed(0)} KM ACROSS${cur}`;
   // log
   const lg = $('#log');
   while (B.logN < S.log.length){
@@ -602,12 +638,11 @@ function tryEngage(e){
 function declare(e, id){
   if (!e) return;
   if (id === 'HOS' && e.trk.iff === 'M4 VALID' && !store.s.expert){
-    modal('Mode 4 valid', `<p>Track ${e.trk.num} answers Mode 4 valid. That is a friendly transponder. Declare it hostile anyway?</p>`, [{t:'Cancel'}, {t:'Declare hostile', cls:'danger', f:() => { H.playerId(S, e, id); logId(e, id); }}], true);
+    modal('Mode 4 valid', `<p>Track ${e.trk.num} answers Mode 4 valid. That is a friendly transponder. Declare it hostile anyway?</p>`, [{t:'Cancel'}, {t:'Declare hostile', cls:'danger', f:() => H.playerId(S, e, id)}], true);
     return;
   }
-  H.playerId(S, e, id); logId(e, id); AU.tone('click');
+  H.playerId(S, e, id); AU.tone('click');
 }
-function logId(e, id){ B.idLog[e.uid] = {id, truth:e.truth, kind:e.kind}; }
 
 function renderLaunchers(force){
   const row = $('#lnchRow'); const parts = [];
@@ -652,8 +687,8 @@ function wireBattle(){
   $('#lnchRow').addEventListener('pointerdown', ev => { const b = ev.target.closest('[data-reload]'); if (b){ ev.preventDefault(); H.reload(S, +b.dataset.reload); } });
   $('#zIn').onclick = () => zoom(1.4); $('#zOut').onclick = () => zoom(1 / 1.4);
   $('#zCtr').onclick = () => { if (B){ B.view.cx = S.bat.x; B.view.cy = S.bat.y; } };
-  $('#z3d').onclick = () => { if (!B) return; B.view.tilt = !B.view.tilt; B.tilted = true; $('#z3d').classList.toggle('on', B.view.tilt); };
-  $('#coachNext').onclick = () => coachNext(true);
+  $('#z3d').onclick = () => { if (!B) return; B.view.tilt = !B.view.tilt; if (B.U) B.U.tilted = true; $('#z3d').classList.toggle('on', B.view.tilt); };
+  $('#coachNext').onclick = () => coachNext(); $('#coachMin').onclick = () => $('#coach').classList.toggle('min');
   const cv = $('#scope'); const ptrs = new Map(); let dragged = false, pinch0 = 0, s0 = 1;
   cv.addEventListener('pointerdown', ev => { cv.setPointerCapture(ev.pointerId); ptrs.set(ev.pointerId, {x:ev.clientX, y:ev.clientY, x0:ev.clientX, y0:ev.clientY}); dragged = false; if (ptrs.size === 2){ const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); s0 = B.view.s; } });
   cv.addEventListener('pointermove', ev => { const p = ptrs.get(ev.pointerId); if (!p || !B) return; const dx = ev.clientX - p.x, dy = ev.clientY - p.y; p.x = ev.clientX; p.y = ev.clientY;
@@ -661,7 +696,9 @@ function wireBattle(){
     if (Math.hypot(ev.clientX - p.x0, ev.clientY - p.y0) > 6) dragged = true;
     if (dragged){ B.view.cx -= dx / B.view.s; B.view.cy += dy / B.view.s * (B.view.tilt ? 1.6 : 1); } });
   const up = ev => { const p = ptrs.get(ev.pointerId); ptrs.delete(ev.pointerId); if (!B || !p) return; if (!dragged && ptrs.size === 0){ const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top; let best = null, bd = 24; for (const h of B.hits){ const d = Math.hypot(h.x - x, h.y - y); if (d < bd){ bd = d; best = h; } } hook(best ? best.uid : null); } };
-  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', ev => ptrs.delete(ev.pointerId));
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointermove', ev => { if (!B || ev.pointerType === 'touch') return; const r = cv.getBoundingClientRect(); B.cursor = {px:ev.clientX - r.left, py:ev.clientY - r.top}; });
+  cv.addEventListener('pointerleave', () => { if (B) B.cursor = null; }); cv.addEventListener('pointercancel', ev => ptrs.delete(ev.pointerId));
   cv.addEventListener('wheel', ev => { ev.preventDefault(); if (!B) return; const r = cv.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top; const w0 = unproj(B.view, mx, my); zoom(ev.deltaY < 0 ? 1.15 : 1 / 1.15); if (!B.view.tilt){ const w1 = unproj(B.view, mx, my); B.view.cx += w0.x - w1.x; B.view.cy += w0.y - w1.y; } }, {passive:false});
   document.addEventListener('keydown', ev => {
     if (UI.screen !== 'battle' || !S || !$('#modal').hidden) return;
@@ -672,7 +709,7 @@ function wireBattle(){
     else if (k === 'h'){ if (e) H.holdFire(S, e); }
     else if (k === 'i'){ if (e) H.playerIff(S, e); }
     else if ('12345'.includes(k) && k.length === 1){ declare(e, ['FRD','NEU','UNK','SUS','HOS'][+k - 1]); }
-    else if (k === 'tab' || k === 'n'){ ev.preventDefault(); const q = H.threatQueue(S); if (q.length){ const i = q.findIndex(x => x.e.uid === B.hooked); hook(q[(i + 1) % q.length].e.uid); } }
+    else if (k === 'tab' || k === 'n'){ ev.preventDefault(); const un = S.ents.filter(x => x.alive && x.trk && x.trk.est && !x.trk.remote && (x.trk.id === 'PND' || x.trk.id === 'UNK')).map(x => x.uid); const list = un.length ? un : H.threatQueue(S).map(x => x.e.uid); if (list.length){ const i = list.indexOf(B.hooked); hook(list[(i + 1) % list.length]); } }
     else if (k === 'v'){ const p = S.plans.find(x => x.state === 'VETO'); if (p) H.veto(S, p.id); }
     else if (k === 'm'){ const ms = ['MANUAL','SEMI','AUTO']; H.setMode(S, ms[(ms.indexOf(S.mode) + 1) % 3]); }
     else if (k === 'p'){ B.speed = B.speed ? 0 : 1; }
@@ -687,67 +724,58 @@ function wireBattle(){
 function zoom(f){ if (!B) return; B.view.s = Math.max(.25, Math.min(14, B.view.s * f)); }
 
 // ---------- coach ----------
-const COACH = {
-  1:[{t:'Traffic only appears inside your fan. Watch the airliners on J-66 and the friendly flight on the Holloman Lane. The table ends at 1:30.', next:true}],
-  2:[{t:'This is the situation display. Your battery is the cyan triangle; rings mark 25, 50, 100 and 150 km. The shaded fan is what your radar can see. The dashed amber line is where targets flying at 100 m drop below the horizon or behind terrain.', next:true},
-     {t:'Tap any track to hook it. Its data appears in the track card.', done:() => !!hookedEnt(), el:'#scope'},
-     {t:'Hook an airliner on J-66. Green half-square, Mode 3 squawk, flight level in the IFF line.', done:() => { const e = hookedEnt(); return e && e.kind === 'CIV'; }},
-     {t:'Hook a friendly fighter: cyan arc, IFF shows M4 VALID, flying the Holloman Lane.', done:() => { const e = hookedEnt(); return e && e.truth === 'F' && e.kind !== 'MED'; }},
-     {t:'Zoom out (− button or mouse wheel) until the 150 km ring fits.', done:() => B.view.W / B.view.s > 300, el:'#zOut'},
-     {t:'Press 3D to tilt the scope. Altitude becomes height and drop lines show ground position. Press it again to flatten.', done:() => B.tilted, el:'#z3d'},
-     {t:'Hook the medevac helicopter coming up from El Paso. Low tracks flicker as terrain hides them.', done:() => { const e = hookedEnt(); return e && e.kind === 'MED'; }},
-     {t:'A silent drone is coming in from the east. Hook it and read NO RESP on the IFF line. Weapons Hold: do not engage. Table ends when it leaves.', done:() => { const e = hookedEnt(); return e && e.kind === 'OWA'; }},
-     {t:'Table II complete. Let the clock run out or press END.', next:false}],
-  3:[{t:'Automatic ID is off. Hook each air track and set its identity: 1 Friend, 2 Neutral, 3 Unknown, 4 Suspect, 5 Hostile. Check IFF, airway and corridor before you decide.', next:true},
-     {t:'Twelve tracks will appear. One friendly has a dead transponder; one airliner deviates squawking 7600 (radio failure). Neither is hostile.', next:true},
-     {t:'Keep identifying until the table ends. Passing needs at least ten correct and zero hostile calls on friends or airliners.', next:false}],
-  4:[{t:'Wait for the target to appear from the east. Unknown tracks show as amber.', done:() => S.ents.some(e => e.alive && e.kind === 'FTR' && e.trk && e.trk.est)},
-     {t:'Hook the target aircraft.', done:() => { const e = hookedEnt(); return e && e.kind === 'FTR'; }},
-     {t:'Declare it HOSTILE with the HOS button or key 5. Under Weapons Tight that is your licence to fire.', done:() => { const e = hookedEnt(); return e && e.trk.id === 'HOS'; }, el:'#cIds'},
-     {t:'Watch the GEM-T line. When it reads IN ENVELOPE, press and hold ENGAGE.', done:() => S.plans.length > 0, el:'#cEng'},
-     {t:'The missile flies out and the radar guides it. Wait for the kill assessment.', done:() => S.st.kills > 0},
-     {t:'Kill. Table IV complete.', next:false}],
-  5:[{t:'Four surrogate ballistic missiles are coming. Each shows a predicted impact marker: red lands on a defended asset, grey lands in open desert.', next:true},
-     {t:'Either switch to SEMI (the computer engages red-marker threats) or hook each red-marker TBM and engage with PAC-3 MSE yourself.', done:() => S.mode !== 'MANUAL' || S.plans.length > 0, el:'#sMode'},
-     {t:'Leave the grey-marker missile alone. Firing at it wastes a missile.', next:false}],
-  6:[{t:'Orders come from HAMMER. Press Space or ACK within 15 seconds of each call.', next:true, el:'#btnAck'},
-     {t:'When Viper flight is put on Hold Fire, never engage it, whatever its IFF says. During Cease Fire, launch nothing.', next:false}],
-  7:[{t:'Switch to SEMI. You identify; the computer engages Hostile tracks that threaten the DAL.', done:() => S.mode === 'SEMI', el:'#sMode'},
-     {t:'Declare the drones and cruise missiles Hostile as they firm up. Ballistic tracks are declared automatically.', next:true},
-     {t:'Watch your launcher bus. You have 16 missiles; the table fails above 12 fired.', next:false, el:'#pLnch'}],
-};
+const ROMAN = ['','I','II','III','IV','V','VI','VII','VIII'];
 function setupCoach(){
-  const tb = S.scn.tutorial && S.scn.tutorial.table;
-  B.coach = COACH[tb] ? {steps:COACH[tb], i:0, allDone:false} : null;
-  $('#coach').hidden = !B.coach;
-  if (B.coach) showCoach();
+  const tb = S.scn.tutorial && S.scn.tutorial.table, T = tb && HT_TRAIN.TABLES[tb];
+  B.U = {hooked:{kinds:new Set(), ent:null}, tilted:false, zoomed:false, end:false};
+  B.coach = T ? {table:tb, steps:T.steps, i:0, held:false, prevSpeed:1, objHtml:''} : null;
+  $('#coach').hidden = !B.coach; $('#coach').classList.remove('min');
+  $$('.hl').forEach(x => x.classList.remove('hl'));
+  if (B.coach){ $('#coachTitle').textContent = 'TABLE ' + ROMAN[tb]; showCoach(); }
 }
-function showCoach(){ const c = B.coach, st = c.steps[c.i]; $('#coachStep').textContent = `${c.i + 1}/${c.steps.length}`; $('#coachText').textContent = st.t; $('#coachNext').hidden = !st.next; $$('.hl').forEach(x => x.classList.remove('hl')); if (st.el){ const el = $(st.el); if (el) el.classList.add('hl'); } }
-function coachNext(manual){ const c = B.coach; if (!c) return; if (c.i < c.steps.length - 1){ c.i++; showCoach(); } if (c.i === c.steps.length - 1) c.allDone = true; }
-function coachTick(){ const c = B && B.coach; if (!c) return; const st = c.steps[c.i]; if (st.done && st.done()){ coachNext(false); } }
+function showCoach(){
+  const c = B.coach, st = c.steps[c.i];
+  $('#coachStep').textContent = c.steps.length ? `COACH ${c.i + 1}/${c.steps.length}` : 'NO COACH';
+  $('#coachText').textContent = st ? st.t : 'Certification run. The coach stays silent; the objective below is all that counts.';
+  $('#coachNext').hidden = !(st && st.pause);
+  if (st && st.pause){ if (!c.held){ c.prevSpeed = B.speed || 1; } B.speed = 0; c.held = true; }
+  $$('.hl').forEach(x => x.classList.remove('hl'));
+  if (st && st.el){ const el = $(HT_TRAIN.SEL[st.el] || st.el); if (el) el.classList.add('hl'); }
+  renderObjectives(true);
+}
+function coachNext(){
+  const c = B && B.coach; if (!c) return;
+  const st = c.steps[c.i];
+  if (st && st.pause && c.held){ c.held = false; B.speed = c.prevSpeed || 1; }
+  if (c.i < c.steps.length - 1){ c.i++; showCoach(); }
+}
+function coachTick(){
+  const c = B && B.coach; if (!c) return;
+  B.U.hooked.ent = hookedEnt();
+  if (B.view.W / B.view.s > 320) B.U.zoomed = true;
+  const st = c.steps[c.i];
+  if (st && !st.pause && !st.last && st.done && st.done(S, B.U)){ AU.tone('order'); coachNext(); }
+  renderObjectives();
+}
+function renderObjectives(force){
+  const c = B.coach; if (!c) return;
+  const r = HT_TRAIN.evaluate(c.table, S, B.U);
+  const html = r.map(o => `<li class="${o.ok ? 'ok' : ''}"><i>${o.ok ? '✓' : '○'}</i><span>${esc(o.t)}${o.live ? ` <em>${esc(o.live)}</em>` : ''}</span></li>`).join('');
+  if (force || html !== c.objHtml){ $('#coachObj').innerHTML = html; c.objHtml = html; }
+}
 
 // ---------- end, AAR ----------
-function tablePass(){
-  const tb = S.scn.tutorial; if (!tb) return null;
-  const st = S.st, sc = S.score;
-  switch (tb.pass){
-    case 'coverage': return {ok:S.cover.ok, why:S.cover.ok ? 'All assets and threat axes inside the fan.' : 'An asset or threat axis sat outside your fan.'};
-    case 'steps': return {ok:!!(B.coach && B.coach.allDone), why:B.coach && B.coach.allDone ? 'Every scope task completed.' : 'Not every coach task was completed.'};
-    case 'ids': { const v = Object.values(B.idLog); let ok = 0, bad = 0; for (const x of v){ const right = (x.truth === 'F' && x.id === 'FRD') || (x.truth === 'N' && x.id === 'NEU') || (x.truth === 'H' && (x.id === 'HOS' || x.id === 'SUS')); if (right) ok++; if (x.id === 'HOS' && x.truth !== 'H') bad++; } return {ok:ok >= 10 && bad === 0, why:`${ok} correct identifications, ${bad} hostile call(s) on protected tracks.`}; }
-    case 'onekill': return {ok:st.kills >= 1 && st.fired.GEMT + st.fired.MSE === 1 && st.viol === 0, why:`${st.kills} kill(s), ${st.fired.GEMT + st.fired.MSE} missile(s) fired, ${st.viol} violation(s).`};
-    case 'nohits': return {ok:st.leak === 0, why:st.leak === 0 ? 'No ballistic missile reached the DAL.' : `${st.leak} threat(s) reached the DAL.`};
-    case 'orders': return {ok:st.viol === 0 && st.lateAck === 0 && !st.frat, why:`${st.viol} violation(s), ${st.lateAck} late acknowledgment(s).`};
-    case 'mixed': { const f = st.fired.GEMT + st.fired.MSE; return {ok:st.leak === 0 && f <= 12, why:`${st.leak} leaker(s), ${f} missiles fired (limit 12).`}; }
-    case 'score': return {ok:sc.total >= 85, why:`Score ${sc.total} (85 needed).`};
-  }
-  return null;
+function tableResult(){
+  const tb = S.scn.tutorial && S.scn.tutorial.table; if (!tb) return null;
+  const objs = HT_TRAIN.evaluate(tb, S, Object.assign({}, B.U || {hooked:{kinds:new Set()}}, {end:true}));
+  return {ok:objs.every(o => o.ok), objs};
 }
 function endBattle(){
   if (!S) return;
   VO.stop(); AU.stopAmb();
   const sc = S.score, prev = store.p.best[S.scn.id];
   if (prev == null || sc.total > prev) store.p.best[S.scn.id] = sc.total;
-  const tp = tablePass();
+  const tp = tableResult();
   let unlockedNow = false;
   if (tp && tp.ok){ store.p.tables[S.scn.tutorial.table] = true; if (S.scn.tutorial.table === 8 && !store.p.cert){ store.p.cert = true; unlockedNow = true; } }
   let campRes = null;
@@ -762,7 +790,7 @@ function openAAR(tp, unlockedNow, campRes){
   const st = S.st, sc = S.score, f = H.findings(S), scn = S.scn;
   const spent = st.spent, kv = st.killVal, fired = st.fired.GEMT + st.fired.MSE;
   const nextTable = scn.tutorial && tp && tp.ok ? SCN.find(s => s.tutorial && s.tutorial.table === scn.tutorial.table + 1) : null;
-  const verdict = tp ? `<div class="verdict ${tp.ok ? 'pass' : 'fail'}">${tp.ok ? 'Table passed' : 'Table not passed'} · ${esc(tp.why)}</div>` : sc.frat ? '<div class="verdict fail">Relieved of duty</div>' : `<div class="verdict ${sc.total >= 80 ? 'pass' : sc.total >= 60 ? '' : 'fail'}">${sc.total >= 90 ? 'Outstanding watch' : sc.total >= 80 ? 'Assets held' : sc.total >= 60 ? 'Mission accomplished with losses' : 'Defense failed'}</div>`;
+  const verdict = tp ? `<div class="verdict ${tp.ok ? 'pass' : 'fail'}">${tp.ok ? 'Table passed' : 'Table not passed'}</div><ul class="objs">${tp.objs.map(o => `<li class="${o.ok ? 'ok' : 'no'}"><i>${o.ok ? '✓' : '✗'}</i><span>${esc(o.t)}${!o.ok && o.tip ? `<em>${esc(o.tip)}</em>` : ''}</span></li>`).join('')}</ul>` : sc.frat ? '<div class="verdict fail">Relieved of duty</div>' : `<div class="verdict ${sc.total >= 80 ? 'pass' : sc.total >= 60 ? '' : 'fail'}">${sc.total >= 90 ? 'Outstanding watch' : sc.total >= 80 ? 'Assets held' : sc.total >= 60 ? 'Mission accomplished with losses' : 'Defense failed'}</div>`;
   const cat = (l, v, m) => `<div class="cat"><span class="l">${l}</span><span class="v">${v}<small> / ${m}</small></span><span class="bar"><i style="width:${Math.round(v / m * 100)}%"></i></span></div>`;
   $('#aarBody').innerHTML = `
     <div class="aar-top"><div><div class="eyebrow">AFTER ACTION REVIEW · ${esc(scn.bty)} · SEED ${S.seed}</div><h2>${esc(scn.table ? scn.name.split('· ')[1] : scn.name)}</h2><div class="eyebrow" style="letter-spacing:.06em;margin:4px 0 8px">${esc(scn.place)} · ${esc(S.endReason)} · T+${fmtT(S.t)}</div>${verdict}

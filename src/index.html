@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Hostile Track</title>
 <meta name="description" content="Patriot AN/MSQ-132 Engagement Control Station simulator. Identify, decide, defend.">
 <meta name="theme-color" content="#080c0d">
@@ -42,8 +43,8 @@
 
   <section id="scr-battle" class="screen battle" hidden>
     <header class="strip">
-      <div class="st-grp"><span class="st-lbl">ADW</span><b id="sADW" class="chip">WHITE</b></div>
-      <div class="st-grp"><span class="st-lbl">WCS</span><b id="sWCS" class="chip">TIGHT</b></div>
+      <div class="st-grp"><span class="st-lbl">ADW</span><div class="lamps" id="sADW"><i data-v="WHITE">W</i><i data-v="YELLOW">Y</i><i data-v="RED">R</i></div></div>
+      <div class="st-grp"><span class="st-lbl">WCS</span><div class="lamps wcs" id="sWCS"><i data-v="HOLD">HOLD</i><i data-v="TIGHT">TIGHT</i><i data-v="FREE">FREE</i></div><b id="sCF" class="cf" hidden>CEASE FIRE</b></div>
       <div class="seg" id="sMode"><button type="button" data-m="MANUAL">MAN</button><button type="button" data-m="SEMI">SEMI</button><button type="button" data-m="AUTO" class="m-AUTO">AUTO</button></div>
       <button id="sEmcon" class="tbtn" type="button" title="Emission control: radar silent">EMCON</button>
       <button id="sPtl" class="tbtn" type="button">PTL 000</button>
@@ -60,14 +61,14 @@
       <div class="ph"><span>RADIO · ORDERS</span><span><button id="btnAck" class="btn ack" type="button">ACK</button> <button class="tbtn sheet-x" type="button" data-close="1">×</button></span></div>
       <ol id="log"></ol>
     </aside>
-    <main class="scope-wrap" id="scopeWrap">
-      <canvas id="scope"></canvas>
+    <main class="scope-wrap" id="scopeWrap"><div class="crt">
+      <canvas id="scope"></canvas><div class="glass" aria-hidden="true"></div>
       <div class="scope-ctl"><button id="zIn" type="button" title="Zoom in">+</button><button id="zOut" type="button" title="Zoom out">−</button><button id="zCtr" type="button" title="Centre on battery">◎</button><button id="z3d" type="button" title="Tilt to 3D view">3D</button></div>
       <div class="scope-info" id="scopeInfo"></div>
       <div class="radar-state" id="radarState" hidden></div>
       <div class="toast" id="toast" hidden></div>
-      <div class="coach" id="coach" hidden><div class="coach-k">COACH · <span id="coachStep"></span></div><p id="coachText"></p><button id="coachNext" class="btn sm" type="button">Next</button></div>
-    </main>
+      <div class="coach" id="coach" hidden><div class="coach-k"><span><span id="coachTitle">TABLE</span> · <span id="coachStep"></span></span><button id="coachMin" class="tbtn" type="button" aria-label="Collapse coach">–</button></div><p id="coachText"></p><button id="coachNext" class="btn sm primary" type="button">Continue</button><ul class="objs" id="coachObj"></ul></div>
+    </div><div class="plate" aria-hidden="true">AN/MSQ-132 · MAN STATION 1 · SITUATION DISPLAY</div></main>
     <aside class="side" id="pSide">
       <div class="ph"><span>TRACK DATA</span><button class="tbtn sheet-x" type="button" data-close="1">×</button></div>
       <div id="card" class="card"></div>
@@ -89,4 +90,5 @@
 
 <script>/*@@DATA@@*/</script>
 <script>/*@@SIM@@*/</script>
+<script>/*@@TRAIN@@*/</script>
 <script>/*@@UI@@*/</script>

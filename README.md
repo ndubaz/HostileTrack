@@ -24,6 +24,7 @@ src/
   ui.js        rendering, audio, panels, tutorial, campaign, AAR
 tools/build.py inlines src/ into dist/index.html
 tests/sim.test.js runs every scenario headless
+tests/training.test.js plays each drill table with a correct and a sloppy crew
 public/        manifest, service worker, icon
 ```
 
@@ -32,6 +33,7 @@ public/        manifest, service worker, icon
 ```bash
 python3 tools/build.py          # writes dist/index.html
 node tests/sim.test.js          # headless run of all 24 scenarios
+node tests/training.test.js     # every table: correct crew passes, sloppy crew fails
 npx serve dist                  # or any static server
 ```
 
@@ -42,6 +44,14 @@ npx serve dist                  # or any static server
 3. Open the URL on a phone or tablet and use **Add to Home Screen**; the service worker caches the game for offline play.
 
 Saves live in the browser's localStorage. Cross-device saves and a leaderboard would need a small backend (Vercel KV or Supabase); the save format is versioned (`hostiletrack.v1`) for that.
+
+## Changelog
+
+**1.1**
+- Training rebuilt: traffic now flies inside the sector, assets sit inside the low-altitude horizon, and Tables II to VIII use a fixed emplacement. Each table has a live objective checklist, coach steps that stop the clock while they explain, and an AAR that lists every objective with a fix for each failure.
+- Table I teaches masking with a real choice (Site C behind Round Hill hides the drones). Table VII budget rebalanced to 16 of 18 missiles; drill surrogates have a 95% kill floor so luck does not fail a correct crew.
+- Shelter console: bezelled CRT with glass, scanlines and grain, beam afterglow, raw clutter returns, contour-line terrain, a cursor range and bearing readout, lit ADW and WCS lamp panels, backlit keys.
+- Fixes: missing charset outside the artifact host, correlated seeds, a crash in the Table I checklist.
 
 ## Roadmap (from the design plan)
 
