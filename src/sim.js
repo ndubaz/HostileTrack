@@ -68,7 +68,7 @@ function createSim(scn, o = {}){
   const siteI = o.site || 0, site = scn.sites[siteI] || scn.sites[0];
   const S = {scn, map, seed, rng, t:0, ents:[], ms:[], plans:[], out:[], log:[], ev:[], snaps:[],
     uid:1, mid:1, pid:1, trkNext:1000 + Math.floor(rng() * 700),
-    bat:{x:site.x, y:site.y, site:siteI, ptl:o.ptl != null ? o.ptl : scn.ptl, alive:true, emcon:false, reorient:0, newPtl:null, displace:0, dispTo:null, radarFault:0, epp:0, silentFor:0},
+    bat:{x:site.x, y:site.y, site:siteI, ptl:o.ptl != null ? o.ptl : scn.ptl, alive:true, emcon:false, reorient:0, newPtl:null, displace:0, dispTo:null, radarFault:0, epp:0, silentFor:0, half:60, sector:'WIDE'},
     wcs:scn.wcs, adw:scn.adw, mode:o.mode || scn.mode,
     doctrine:Object.assign({TBM:'RIPPLE', AIR:'SLS', UAV:'SINGLE'}, o.doctrine || {}),
     launchers:[], reserve:{MSE:0, GEMT:0}, loaded:{MSE:0, GEMT:0},
@@ -77,7 +77,7 @@ function createSim(scn, o = {}){
     neighbors:(scn.neighbors || []).map(n => ({...n, on:true, cool:0})),
     st:{fired:{GEMT:0, MSE:0}, spent:0, killVal:0, wasted:0, waste:{decoy:0, fals:0, nondal:0, protect:0}, mseDrone:0, viol:0, lateAck:0, misId:0, frat:0, hitsW:0, potW:0, leak:0, kills:0, miss:0, radarLost:false, lsLost:0, vetoes:0, debris:0, engMissed:0, outSector:0, holdSaves:0},
     xp:o.xp || 0, tut:scn.tutorial || null, diff:o.difficulty || 'normal',
-    ended:false, endAt:null, endReason:'', idLog:{}, nextSnap:0, nextAuto:0, firstHostile:false, firstTbm:false, idCount:0,
+    ended:false, endAt:null, endReason:'', idLog:{}, n:0, inputs:[], replayQ:null, faults:[], radar:{load:0, searchF:1, trackPct:8}, radiateT:0, wccSlow:0, nextSnap:0, nextAuto:0, firstHostile:false, firstTbm:false, idCount:0,
   };
   const stock = o.stock ? {...o.stock} : null;
   const take = (k, n) => { if (!stock) return n; const g = Math.min(n, stock[k]); stock[k] -= g; return g; };
@@ -90,7 +90,11 @@ function createSim(scn, o = {}){
   S.reserve.MSE = take('MSE', (scn.reserve && scn.reserve.MSE) || 0);
   S.reserve.GEMT = take('GEMT', (scn.reserve && scn.reserve.GEMT) || 0);
   S.loaded.MSE += S.reserve.MSE; S.loaded.GEMT += S.reserve.GEMT;
+  S.opts = JSON.parse(JSON.stringify(o));
+  S.tca = makeTca(o.tca);
   placeLaunchers(S);
+  S.red = planRed(S, o.red);
+  S.redWaves = [].concat(...S.red.map(t => t.waves || []));
   buildSpawns(S);
   S.orderQ = (scn.orders || []).slice().sort((a, b) => a.t - b.t);
   buildFaults(S);
@@ -180,6 +184,7 @@ function buildSpawns(S){
   }
   let waves = scn.waves || [];
   if (scn.random) waves = randomWaves(S, scn);
+  waves = waves.concat(S.redWaves || []);
   for (const w of waves){
     for (let i = 0; i < w.n; i++){
       const t = w.t + i * (w.every || 3) + (w.every ? rng() * w.every * .3 : 0);
@@ -256,7 +261,7 @@ function buildFaults(S){
   const f = S.scn.faults;
   if (Array.isArray(f)){ S.faultQ = f.slice(); return; }
   if (f === 'none' || S.diff === 'off') return;
-  const n = S.diff === 'hard' ? 4 : 2, kinds = ['RADAR', 'LS', 'EPP', 'LS'];
+  const n = S.diff === 'hard' ? 4 : 2, kinds = ['RADAR', 'LS', 'EPP', 'LS', 'WCC'];
   for (let i = 0; i < n; i++) S.faultQ.push({t:100 + S.rng() * Math.max(60, S.scn.dur - 200), k:kinds[Math.floor(S.rng() * kinds.length)]});
   S.faultQ.sort((a, b) => a.t - b.t);
 }
@@ -264,6 +269,7 @@ function buildFaults(S){
 // ---------- outputs ----------
 function say(S, who, text, opt = {}){
   S.log.push({t:S.t, who, text, cls:opt.cls || ''});
+  if (who === 'TCA' && S.tca && (opt.pri || 1) < 3 && S.tca.fatigue > .2 && ((S.n * 7919 + text.length) % 100) / 100 < S.tca.fatigue * .4) return;
   if (!opt.silent) S.out.push({k:'say', who, text:opt.speak || text, pri:opt.pri || 1});
 }
 const tone = (S, v) => S.out.push({k:'tone', v});
@@ -286,9 +292,9 @@ function detects(S, src, e, own){
   const dx = e.x - src.x, dy = e.y - src.y, r = Math.hypot(dx, dy);
   if (r < .3) return true;
   const brg = brgOf(dx, dy);
-  if (Math.abs(angDiff(brg, src.ptl)) > RADAR.half) return false;
+  if (Math.abs(angDiff(brg, src.ptl)) > (src.half || RADAR.half)) return false;
   let R = RADAR.rmax * Math.pow(e.T.rcs, .25);
-  if (own){ if (S.bat.radarFault > 0) R *= .6; R *= jamFactor(S, brg, r); }
+  if (own){ if (S.bat.radarFault > 0) R *= .6; R *= jamFactor(S, brg, r) * S.radar.searchF * (S.bat.half < 60 ? 1.25 : 1); }
   if (r > R) return false;
   if (r > horizon(e.z)) return false;
   if (masked(S.map, src.x, src.y, e.x, e.y, e.z)) return false;
@@ -340,6 +346,7 @@ function establish(S, e){
   S.log.push({t:S.t, who:'SYS', text:`NEW TRACK ${k.num}  BRG ${Math.round(b).toString().padStart(3,'0')}  RNG ${Math.round(r)} KM${k.remote ? '  REMOTE ' + (k.remName || '') : ''}`, cls:'sys'});
   if (!e.T.ballistic && e.truth !== 'N' && k.iff === 'NO RESP' && r < 120 && e.kind !== 'FALSE'){
     tone(S, 'new');
+    if (S.tca && inCorridor(S, e) && S.rng() < tcaEff(S)) say(S, 'TCA', `Track ${k.num} is silent but flying the lane. Could be a friendly with a dead Mode 4.`, {pri:2, speak:`Track ${spoken(k.num)} is silent but in the lane. Possible friendly, dead mode four`});
   }
 }
 
@@ -360,7 +367,7 @@ function classify(S, e){
 function dropTrack(S, e){ e.trk = null; }
 
 function updateTracks(S, dt){
-  const on = radarOn(S), own = {x:S.bat.x, y:S.bat.y, ptl:S.bat.ptl};
+  const on = radarOn(S), own = {x:S.bat.x, y:S.bat.y, ptl:S.bat.ptl, half:S.bat.half};
   for (const e of S.ents){
     if (!e.alive) continue;
     const ownDet = on && detects(S, own, e, true);
@@ -604,7 +611,7 @@ function roeCheck(S, e){
   if (S.wcs === 'TIGHT' && id !== 'HOS') v.push('WEAPONS TIGHT: track not declared HOSTILE');
   return v;
 }
-function reactDelay(S, src){ const base = S.adw === 'WHITE' ? 6 : S.adw === 'YELLOW' ? 3.5 : 2; return base * (1 - .06 * Math.min(5, S.xp)) * (src === 'player' ? 1 : .8); }
+function reactDelay(S, src){ const base = S.adw === 'WHITE' ? 6 : S.adw === 'YELLOW' ? 3.5 : 2; return base * (1 - .06 * Math.min(5, S.xp)) * (src === 'player' ? 1 : .8) + (S.wccSlow || 0); }
 
 function engage(S, e, o = {}){
   const src = o.src || 'player';
@@ -630,7 +637,7 @@ function engage(S, e, o = {}){
   const p = {id:S.pid++, uid:e.uid, trk:e.trk.num, w, wpref:o.wpn || 'AUTO', doc, src, state:src === 'auto' ? 'VETO' : (sol.ok ? 'READY' : 'WAIT'), vetoT:src === 'auto' ? 5 : 0, fireAt:S.t + reactDelay(S, src), shots:0, max:doc === 'RIPPLE' ? 2 : 1, inflight:0, salvo:1, created:S.t, result:''};
   S.plans.push(p);
   if (e.engageOrder) e.engageDone = true;
-  ev(S, 'ENG', `${src === 'player' ? 'Engage' : src === 'semi' ? 'Semi-auto engage' : 'Auto engage'} track ${e.trk.num} · ${WEAPONS[w].name} · ${doc}`, {trk:e.trk.num, uid:e.uid, src});
+  ev(S, 'ENG', `${src === 'player' ? 'Engage' : src === 'semi' ? 'Semi-auto engage' : 'Auto engage'} track ${e.trk.num} · ${WEAPONS[w].name} · ${doc}`, {trk:e.trk.num, uid:e.uid, src, kind:e.kind});
   if (src === 'auto'){ tone(S, 'veto'); say(S, 'TCA', `Auto engage track ${e.trk.num}. Veto window five seconds.`, {speak:`Auto engage track ${spoken(e.trk.num)}`, pri:2}); }
   else say(S, 'TCA', `Engaging track ${e.trk.num}, ${WEAPONS[w].name}.`, {speak:`Engaging track ${spoken(e.trk.num)}`, pri:1, silent:src === 'semi' && S.rng() < .5});
   return {ok:true, plan:p};
@@ -866,18 +873,221 @@ function veto(S, pid){ const p = S.plans.find(x => x.id === pid); if (!p || p.st
 function reorient(S, ptl){ if (S.bat.reorient > 0 || S.bat.displace > 0 || !S.bat.alive) return; S.bat.reorient = 25; S.bat.newPtl = (ptl + 360) % 360; ev(S, 'PTL', `Reorienting PTL to ${Math.round(S.bat.newPtl)}°`); say(S, 'TCA', 'Reorienting. Radar down for twenty-five seconds.', {pri:2}); }
 function displace(S, si){ if (!S.scn.displace || S.bat.displace > 0 || !S.bat.alive || si === S.bat.site) return; S.bat.displace = 50; S.bat.dispTo = si; for (const L of S.launchers) if (!L.dead){ L.state = 'MOVE'; L.timer = 50; } ev(S, 'DISPLACE', `March order to ${S.scn.sites[si].name}`); say(S, 'TCA', 'March order. Battery offline fifty seconds.', {pri:3}); }
 
+
+// =====================================================================
+// 2.0 · faults with isolation, AI crew, radar budget, red commander,
+//       command log, rewind, doctrinal ghost
+// =====================================================================
+const FAULTS = {
+  RADAR:{fam:3, title:'Transmitter', effect:'Search range down 40%', fix:'RESET TRANSMITTER', auto:120},
+  LS:{fam:2, title:'Launcher data link', effect:'One launcher cannot fire', fix:'RESET DATA LINK', auto:90},
+  EPP:{fam:5, title:'Prime power', effect:'Radar and launchers dark', fix:'TRANSFER TO STANDBY EPP', auto:45},
+  WCC:{fam:6, title:'Weapons control computer', effect:'Engagement solutions 4 s slower', fix:'REBOOT WCC', auto:90},
+};
+const FIX_ACTIONS = ['RESET DATA LINK', 'RESET TRANSMITTER', 'TRANSFER TO STANDBY EPP', 'REBOOT WCC'];
+const CREW = [
+  {id:'alvarez', name:'SGT Alvarez', skill:.85, note:'Steady. Catches IFF anomalies and lane traffic.'},
+  {id:'okafor', name:'SPC Okafor', skill:.62, note:'Fast hands, misses details when tired.'},
+  {id:'brandt', name:'SSG Brandt', skill:.93, note:'Best fault isolator in the battalion. Wears out fast.'},
+];
+function makeTca(o){
+  const c = CREW.find(x => x.id === (o && o.id)) || CREW[0];
+  return {id:c.id, name:c.name, skill:c.skill, fatigue:Math.max(0, Math.min(.8, (o && o.fatigue) || 0)), delegate:{reload:true, faults:true, ...((o && o.delegate) || {})}, busyUntil:0};
+}
+const tcaEff = S => Math.max(.2, S.tca.skill * (1 - S.tca.fatigue * .5));
+
+function openFault(S, k, extra = {}){
+  const F = FAULTS[k], f = {id:(S.fid = (S.fid || 0) + 1), k, code:`${F.fam}${String(10 + Math.floor(S.rng() * 89))}`, title:F.title, effect:F.effect, t0:S.t, auto:S.t + F.auto, fixing:null, ...extra};
+  S.faults.push(f);
+  if (k === 'LS'){ const L = S.launchers.find(x => x.id === f.ls); if (L){ L.state = 'COMMS'; L.timer = 1e9; } }
+  tone(S, 'fault');
+  say(S, 'TCA', `BIT fault ${f.code}, ${F.title.toLowerCase()}${f.ls ? ', launcher ' + f.ls : ''}.`, {pri:3, speak:`B I T fault ${spoken(f.code)}, ${F.title}`});
+  ev(S, 'FAULT', `BIT ${f.code} · ${F.title}${f.ls ? ' · LS' + f.ls : ''}: ${F.effect}`, {bad:true});
+  return f;
+}
+function closeFault(S, f, how){
+  S.faults = S.faults.filter(x => x !== f);
+  if (f.k === 'LS'){ const L = S.launchers.find(x => x.id === f.ls); if (L && !L.dead && L.state === 'COMMS'){ L.state = 'READY'; L.timer = 0; } }
+  ev(S, 'FIXED', `BIT ${f.code} cleared${how ? ' · ' + how : ''}`, {good:true});
+  S.log.push({t:S.t, who:'TCA', text:`BIT ${f.code} CLEARED${how ? ' · ' + how.toUpperCase() : ''}`, cls:'sys'});
+}
+function fixFault(S, fid, action, by = 'TCO'){
+  const f = S.faults.find(x => x.id === fid); if (!f || f.fixing) return false;
+  const ok = action === FAULTS[f.k].fix;
+  const dur = by === 'TCO' ? (ok ? 8 : 15) : 20 * (1.6 - S.tca.skill) * (1 + S.tca.fatigue);
+  f.fixing = {by, action, ok, until:S.t + dur};
+  S.log.push({t:S.t, who:by === 'TCO' ? callsign(S).toUpperCase() : 'TCA', text:`${action} · BIT ${f.code} · ${Math.round(dur)} S`, cls:by === 'TCO' ? 'me' : 'sys'});
+  return true;
+}
+function stepFaults(S){
+  while (S.faultQ.length && S.faultQ[0].t <= S.t){
+    const q = S.faultQ.shift();
+    if (q.k === 'LS'){ const c = S.launchers.filter(L => !L.dead && L.state === 'READY'); if (c.length) openFault(S, 'LS', {ls:c[Math.floor(S.rng() * c.length)].id}); }
+    else openFault(S, q.k);
+  }
+  for (const f of S.faults.slice()){
+    if (f.fixing && S.t >= f.fixing.until){
+      if (f.fixing.ok) closeFault(S, f, f.fixing.by === 'TCO' ? 'fixed by you' : 'fixed by ' + S.tca.name);
+      else { say(S, 'TCA', `No joy on ${f.code}. Wrong procedure.`, {pri:2}); f.fixing = null; f.tries = (f.tries || 0) + 1; }
+      continue;
+    }
+    if (!f.fixing && S.t >= f.auto){ closeFault(S, f, 'self-recovered'); continue; }
+    if (!f.fixing && S.tca.delegate.faults && S.t - f.t0 > 4 + 6 * S.tca.fatigue){
+      const right = S.rng() < tcaEff(S);
+      fixFault(S, f.id, right ? FAULTS[f.k].fix : FIX_ACTIONS.find(a => a !== FAULTS[f.k].fix), 'TCA');
+    }
+  }
+  S.bat.radarFault = S.faults.some(f => f.k === 'RADAR') ? 1 : 0;
+  S.bat.epp = S.faults.some(f => f.k === 'EPP') ? 1 : 0;
+  S.wccSlow = S.faults.some(f => f.k === 'WCC') ? 4 : 0;
+}
+function stepCrew(S){
+  if (!S.tca.delegate.reload) return;
+  for (const L of S.launchers){
+    if (L.dead || L.state !== 'READY' || L.MSE + L.GEMT > 0) { L.tcaAt = null; continue; }
+    const can = (L.cap.MSE && S.reserve.MSE) || (L.cap.GEMT && S.reserve.GEMT); if (!can) continue;
+    if (L.tcaAt == null) L.tcaAt = S.t + 4 * (1 + S.tca.fatigue * 2);
+    else if (S.t >= L.tcaAt){ L.tcaAt = null; if (reload(S, L.id)) say(S, 'TCA', `Reloading launcher ${L.id}.`, {pri:1, silent:true}); }
+  }
+}
+function setSector(S, v){
+  if (S.bat.sector === v) return;
+  S.bat.sector = v; S.bat.half = v === 'NARROW' ? 30 : 60;
+  ev(S, 'SECTOR', `Search sector ${v} (±${S.bat.half}°)`);
+  S.log.push({t:S.t, who:'SYS', text:`SEARCH SECTOR ${v} · ±${S.bat.half}°${v === 'NARROW' ? ' · RANGE +25%' : ''}`, cls:'sys'});
+}
+function stepRadarBudget(S){
+  let n = 0; for (const e of S.ents) if (e.alive && e.trk && e.trk.est && !e.trk.remote) n++;
+  S.radar.load = n;
+  S.radar.searchF = Math.max(.55, Math.min(1, 1 - .015 * Math.max(0, n - 10)));
+  S.radar.trackPct = Math.round(Math.min(.6, .08 + n * .018) * 100);
+  if (radarOn(S)) S.radiateT += 1;
+}
+
+// ---------- red commander ----------
+function circMean(bs){ let x = 0, y = 0; for (const b of bs){ x += Math.sin(b * DEG); y += Math.cos(b * DEG); } return brgOf(x, y); }
+function planRed(S, prof){
+  const scn = S.scn; if (!prof || scn.tutorial) return [];
+  const ax = circMean(scn.axis && scn.axis.length ? scn.axis : [scn.ptl]);
+  const top = scn.assets.slice().sort((a, b) => a.pri - b.pri)[0].id, ids = scn.assets.map(a => a.id), dur = scn.dur;
+  const n = prof.battles || 0, tac = [];
+  tac.push({id:'probe', name:'Probe', why:n ? 'Red tests your sector edges before it commits.' : 'Red has never fought you. It probes first to find your sector.',
+    hint:'Single drones on the flanks early in the watch.',
+    waves:[{t:15, type:'OWA', n:2, brg:ax - 58, range:80, every:12, targets:['miss']}, {t:30, type:'OWA', n:1, brg:ax + 58, range:80, targets:['miss']}]});
+  if (n >= 1){
+    const off = prof.ptlOff || 0, side = off >= 0 ? -1 : 1;
+    tac.push({id:'gap', name:'Gap strike', why:`Your PTL has sat ${Math.abs(Math.round(off))}° ${off >= 0 ? 'right' : 'left'} of the threat axis on average. Red routes cruise missiles around the opposite edge.`,
+      hint:'Low cruise missiles from outside the expected axis.',
+      waves:[{t:Math.round(dur * .45), type:'CM', n:3, brg:ax + side * 80, range:115, every:9, alt:.04, targets:[top]}]});
+  }
+  if ((prof.decoyShots || 0) >= 2) tac.push({id:'decoy', name:'Decoy tax', why:`You have fired ${prof.decoyShots} missiles at decoys. Red sends more of them.`,
+    hint:'A heavier share of decoys in the drone stream.',
+    waves:[{t:Math.round(dur * .25), type:'DECOY', n:6, brg:ax, spread:14, range:80, every:6, targets:ids}]});
+  if (n >= 2 && (prof.radiating == null ? 1 : prof.radiating) > .9) tac.push({id:'sead', name:'SEAD hunt', why:`Your radar radiated ${Math.round((prof.radiating || 1) * 100)}% of the time. Red sends anti-radiation shooters to find it.`,
+    hint:'Fighters carrying anti-radiation missiles.',
+    waves:[{t:Math.round(dur * .5), type:'FTR', n:2, brg:ax, range:220, every:15, role:'sead', arm:2, alt:7}]});
+  if (n >= 3 || (prof.lowStock || 0) >= 1) tac.push({id:'pressure', name:'Pressure salvo', why:'Red watches your launchers. When your ready PAC-3 count runs low, it fires a ballistic salvo.',
+    hint:'A ballistic salvo when your launchers run dry.', reactive:true, ax, top});
+  return tac;
+}
+function stepRed(S){
+  for (const t of S.red){
+    if (!t.reactive || t.used || S.t < 90) continue;
+    if (rounds(S, 'MSE') <= 4 && S.loaded.MSE > 6){
+      t.used = true; t.at = S.t;
+      ev(S, 'RED', `Red pressure salvo: your ready PAC-3 dropped to ${rounds(S, 'MSE')}`, {bad:true});
+      for (let i = 0; i < 3; i++) addSpawn(S, S.t + 2 + i * 3, () => spawnThreat(S, {type:'SRBM', brg:t.ax, spread:6, range:300}, t.top, i), true);
+      S.spawns.sort((a, b) => a.t - b.t); S.si = S.spawns.findIndex(x => x.t > S.t - 1e-9); if (S.si < 0) S.si = S.spawns.length;
+    }
+  }
+}
+function learnRed(prof, S){
+  const p = {...(prof || {})}, scn = S.scn; if (scn.tutorial) return p;
+  const ax = circMean(scn.axis && scn.axis.length ? scn.axis : [scn.ptl]);
+  const w = p.battles ? .5 : 1;
+  p.battles = (p.battles || 0) + 1;
+  p.ptlOff = (p.ptlOff || 0) * (1 - w) + angDiff(S.bat.ptl, ax) * w;
+  p.decoyShots = (p.decoyShots || 0) + S.st.waste.decoy;
+  p.shots = (p.shots || 0) + S.st.fired.MSE + S.st.fired.GEMT;
+  const rad = Math.min(1, S.radiateT / Math.max(1, S.t));
+  p.radiating = p.radiating == null ? rad : p.radiating * .5 + rad * .5;
+  if (rounds(S, 'MSE', false) <= 4) p.lowStock = (p.lowStock || 0) + 1;
+  return p;
+}
+
+// ---------- command log, rewind ----------
+const ent = (S, uid) => S.ents.find(e => e.uid === uid);
+const CMD = {
+  engage:(S, a) => engage(S, ent(S, a.uid), {src:'player', wpn:a.wpn, force:a.force}),
+  id:(S, a) => playerId(S, ent(S, a.uid), a.id),
+  iff:(S, a) => playerIff(S, ent(S, a.uid)),
+  hold:(S, a) => holdFire(S, ent(S, a.uid)),
+  veto:(S, a) => veto(S, a.pid),
+  ack:S => ack(S),
+  reload:(S, a) => reload(S, a.id),
+  reorient:(S, a) => reorient(S, a.ptl),
+  displace:(S, a) => displace(S, a.site),
+  mode:(S, a) => setMode(S, a.v),
+  emcon:(S, a) => setEmcon(S, a.v),
+  sector:(S, a) => setSector(S, a.v),
+  fix:(S, a) => fixFault(S, a.fid, a.act),
+  delegate:(S, a) => { S.tca.delegate[a.k] = a.v; },
+  end:S => { S.endAt = S.t; S.endReason = 'Ended by the TCO'; S.abandon = true; },
+};
+function cmd(S, c, a = {}){ if (S.ended) return; S.inputs.push({n:S.n, c, a}); return CMD[c](S, a); }
+function rewind(scn, opts, inputs, nStop){
+  const S = createSim(scn, opts);
+  S.replayQ = inputs.filter(x => x.n < nStop).map(x => ({...x}));
+  while (S.n < nStop && !S.ended) step(S);
+  S.replayQ = null; S.out.length = 0; S.rewoundAt = S.t;
+  return S;
+}
+
+// ---------- doctrinal ghost: a by-the-book crew on the same seed ----------
+function ghostThink(S){
+  if (S.acks.some(a => !a.done)) cmd(S, 'ack');
+  if (S.mode !== 'SEMI') cmd(S, 'mode', {v:'SEMI'});
+  let armClose = false;
+  for (const e of S.ents){
+    if (!e.alive || !e.trk || !e.trk.est || e.trk.remote) continue;
+    const k = e.trk;
+    if (e.kind === 'ARM' && Math.hypot(e.x - S.bat.x, e.y - S.bat.y) < 45) armClose = true;
+    if (e.T.ballistic || k.idBy === 'PLAYER') continue;
+    const sp = Math.hypot(e.vx, e.vy), zs = k.zs || [];
+    let id = null;
+    if (k.iff === 'M4 VALID') id = 'FRD';
+    else if (k.iff && k.iff.startsWith('M3')) id = 'NEU';
+    else if (k.iff === 'NO RESP'){
+      if (inCorridor(S, e) && sp > .18){ if (!k.ghostIff){ k.ghostIff = 1; cmd(S, 'iff', {uid:e.uid}); continue; } id = 'FRD'; }
+      else if (!k.cls) id = null;
+      else if (e.T.cls === 'UAV' && zs.length >= 10){ const m = zs.reduce((a, c) => a + c, 0) / zs.length, sd = Math.sqrt(zs.reduce((a, c) => a + (c - m) ** 2, 0) / zs.length); id = sd < .005 ? 'SUS' : 'HOS'; }
+      else if (e.T.cls !== 'UAV' && assess(S, e).closing) id = 'HOS';
+      else if (e.kind === 'FTR' || e.kind === 'JAM' || e.kind === 'HELO') id = 'HOS';
+    }
+    if (id && k.id !== id) cmd(S, 'id', {uid:e.uid, id});
+  }
+  if (armClose !== S.bat.emcon) cmd(S, 'emcon', {v:armClose});
+}
+function runGhost(scn, opts){
+  const S = createSim(scn, {...opts, mode:'SEMI', tca:{...(opts.tca || {}), fatigue:0, delegate:{reload:true, faults:true}}});
+  let n = 0;
+  while (!S.ended && n < 60000){ step(S); n++; if (n % 10 === 0) ghostThink(S); S.out.length = 0; }
+  const engaged = {}; for (const x of S.ev) if (x.k === 'ENG' && x.uid) engaged[x.uid] = x.t;
+  return {score:S.score, st:S.st, engaged, ev:S.ev.filter(x => ['ENG','KILL','HIT','VIOL','FRAT','EMCON'].includes(x.k)), t:S.t, kinds:Object.fromEntries(S.ents.map(e => [e.uid, e.kind]))};
+}
+
 // ---------- main step ----------
 function step(S, dt = DT){
   if (S.ended) return;
-  S.t += dt;
+  if (S.replayQ) while (S.replayQ.length && S.replayQ[0].n <= S.n){ const x = S.replayQ.shift(); S.inputs.push(x); CMD[x.c](S, x.a); }
+  S.t += dt; S.n++;
   const b = S.bat;
   if (b.reorient > 0){ b.reorient -= dt; if (b.reorient <= 0){ b.ptl = b.newPtl; placeLaunchers(S); S.log.push({t:S.t, who:'SYS', text:`PTL ${String(Math.round(b.ptl)).padStart(3,'0')} · RADAR RADIATING`, cls:'sys'}); } }
   if (b.displace > 0){ b.displace -= dt; if (b.displace <= 0){ const s = S.scn.sites[b.dispTo]; b.x = s.x; b.y = s.y; b.site = b.dispTo; placeLaunchers(S); for (const L of S.launchers) if (!L.dead) L.state = 'READY'; say(S, 'TCA', `Emplaced at ${s.name}. Radar radiating.`, {pri:2}); } }
-  if (b.radarFault > 0) b.radarFault -= dt;
-  if (b.epp > 0) b.epp -= dt;
   while (S.si < S.spawns.length && S.spawns[S.si].t <= S.t){ const sp = S.spawns[S.si++]; sp.fn(); if (sp.threat) S.threatsLeft--; }
   processOrders(S);
-  processFaults(S);
+  stepFaults(S);
+  if (S.n % 20 === 0){ stepRadarBudget(S); stepRed(S); stepCrew(S); }
   for (const e of S.ents) if (e.alive) stepEnt(S, e, dt);
   updateTracks(S, dt);
   if (S.t >= S.nextAuto){ S.nextAuto = S.t + .5; autoEngage(S); }
@@ -981,6 +1191,7 @@ function findings(S){
 }
 
 return {createSim, step, DT, RADAR, WEAPONS, TYPES, MAP, brgOf, polar, angDiff, horizon, heightAt, isLand, lowAltReach, coverage, assess, solve, threatQueue, roeCheck, engage, activePlan, radarOn, rounds,
-  setMode, setEmcon, playerId, playerIff, holdFire, veto, ack, reload, reorient, displace, remaining, findings, score, onAirway, inCorridor, spoken, brgS, PRI_W};
+  setMode, setEmcon, playerId, playerIff, holdFire, veto, ack, reload, reorient, displace, remaining, findings, score, onAirway, inCorridor, spoken, brgS, PRI_W,
+  cmd, rewind, runGhost, learnRed, planRed, FAULTS, FIX_ACTIONS, CREW, setSector, tcaEff, circMean};
 })();
 if (typeof module !== 'undefined') module.exports = HT_SIM;

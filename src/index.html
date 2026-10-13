@@ -12,7 +12,7 @@
   <section id="scr-title" class="screen title">
     <canvas id="titleCanvas" aria-hidden="true"></canvas>
     <div class="title-inner">
-      <div class="eyebrow">AN/MSQ-132 · Engagement Control Station · Patriot Config 3+</div>
+      <div class="eyebrow">Version 2.0 · AN/MSQ-132 · Engagement Control Station · Patriot Config 3+</div>
       <h1 class="wordmark">Hostile<br><span>Track</span></h1>
       <p class="tagline">You are the Tactical Control Officer in a Patriot fire unit. Identify what is in the sky, decide what deserves a missile, and make the load last.</p>
       <button id="btnEnter" class="btn primary big" type="button">Enter the shelter</button>
@@ -51,6 +51,7 @@
       <button id="sDisp" class="tbtn" type="button" hidden>DISPLACE</button>
       <button id="sRadio" class="tbtn rbtn" type="button">RADIO</button>
       <div class="st-grow"></div>
+      <div class="st-grp hide-s" title="Radar time: search share and tracks held"><span class="st-lbl">RADAR</span><span class="rtg"><i id="sRtg"></i></span><b id="sRt">100%</b></div>
       <div class="st-grp hide-s"><span class="st-lbl">HOS</span><b id="sHos">0</b><span class="st-lbl">UNK</span><b id="sUnk">0</b></div>
       <div class="st-grp"><span class="st-lbl">MSE</span><b id="sMse">0</b><span class="st-lbl">GEM-T</span><b id="sGem">0</b></div>
       <div class="st-clock"><b id="sClock">T+00:00</b><span id="sZulu">0000Z</span></div>
@@ -70,10 +71,16 @@
       <div class="coach" id="coach" hidden><div class="coach-k"><span><span id="coachTitle">TABLE</span> · <span id="coachStep"></span></span><button id="coachMin" class="tbtn" type="button" aria-label="Collapse coach">–</button></div><p id="coachText"></p><button id="coachNext" class="btn sm primary" type="button">Continue</button><ul class="objs" id="coachObj"></ul></div>
     </div><div class="plate" aria-hidden="true">AN/MSQ-132 · MAN STATION 1 · SITUATION DISPLAY</div></main>
     <aside class="side" id="pSide">
-      <div class="ph"><span>TRACK DATA</span><button class="tbtn sheet-x" type="button" data-close="1">×</button></div>
-      <div id="card" class="card"></div>
-      <div class="ph"><span>ENGAGEMENT QUEUE · THREAT ORDER</span></div>
-      <div id="queue" class="queue"></div>
+      <div class="pagekeys" id="pageKeys"><button type="button" data-pg="trk" class="on">TRACK<small>F1</small></button><button type="button" data-pg="tl">TIMELINE<small>F2</small></button><button type="button" data-pg="sys">SYSTEM<small>F3</small></button><button type="button" data-pg="crew">CREW<small>F4</small></button><button class="tbtn sheet-x" type="button" data-close="1" aria-label="Close">×</button></div>
+      <div class="pg" data-page="trk">
+        <div class="ph"><span>TRACK DATA</span></div>
+        <div id="card" class="card"></div>
+        <div class="ph"><span>ENGAGEMENT QUEUE · THREAT ORDER</span></div>
+        <div id="queue" class="queue"></div>
+      </div>
+      <div class="pg" data-page="tl" hidden><div class="ph"><span>ENGAGEMENT TIMELINE · NEXT 90 S</span></div><div id="tlPage" class="pgbody"></div></div>
+      <div class="pg" data-page="sys" hidden><div class="ph"><span>SYSTEM STATUS · BIT</span></div><div id="sysPage" class="pgbody"></div></div>
+      <div class="pg" data-page="crew" hidden><div class="ph"><span>CREW · MANSTATION 2</span></div><div id="crewPage" class="pgbody"></div></div>
     </aside>
     <footer class="lnch" id="pLnch"><div class="lnch-row" id="lnchRow"></div></footer>
     <nav class="ptabs" id="ptabs"><button type="button" data-p="">SCOPE</button><button type="button" data-p="side">TRACK</button><button type="button" data-p="radio">RADIO</button><button type="button" data-p="lnch">LNCHR</button></nav>

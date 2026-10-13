@@ -360,3 +360,65 @@ body.legacy .glass{background:
   .lamps.wcs i{min-width:0; padding:2px 4px; font-size:10.5px}
   .coach{left:8px; right:8px; width:auto; bottom:8px; max-height:60%}
 }
+
+/* ---------- 2.0 station pages ---------- */
+.pagekeys{display:flex; gap:4px; padding:6px; background:#0b100f; border-bottom:1px solid #050706; position:sticky; top:0; z-index:2}
+.pagekeys button[data-pg]{flex:1; display:grid; justify-items:center; gap:0; padding:5px 2px 4px; border:1px solid #000; border-radius:3px; cursor:pointer; font-family:var(--f-disp); font-weight:700; font-size:13px; letter-spacing:.08em; color:#aab6b0;
+  background:linear-gradient(#252d2a,#141917); box-shadow:inset 0 1px 0 rgba(255,255,255,.08), 0 2px 0 #000}
+.pagekeys button small{font-family:var(--f-data); font-size:9px; color:var(--faint); letter-spacing:.1em}
+.pagekeys button.on{background:linear-gradient(#3b4743,#28312e); color:var(--text); box-shadow:inset 0 0 0 1px var(--cyan), 0 0 10px rgba(82,205,224,.25)}
+.pagekeys button.alert{color:#fff; background:linear-gradient(#8a2219,#5e140e); animation:pulse 1s infinite}
+.pagekeys .sheet-x{flex:0 0 auto}
+.pg{display:flex; flex-direction:column}
+.pgbody{padding:8px 10px; display:grid; gap:8px; font-family:var(--f-data); font-size:12px}
+.tlax{position:relative; height:16px; margin:0 0 2px; border-bottom:1px solid var(--line2)}
+.tlax span{position:absolute; transform:translateX(-50%); font-size:10px; color:var(--faint)}
+.tlax span:first-child{transform:none} .tlax span:last-child{transform:translateX(-100%)}
+.tlr{display:grid; gap:3px; padding:6px 0; border-bottom:1px solid var(--line)}
+.tlh{display:flex; gap:8px; align-items:baseline} .tlh b{font-size:13px} .tlh span{color:var(--dim)}
+.tls{color:var(--amber); font-size:11px; letter-spacing:.04em}
+.tlb{position:relative; height:14px; background:repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 16.66%); border:1px solid var(--line)}
+.tlb .fly,.tlkey .fly{position:absolute; top:4px; height:4px; background:var(--red); box-shadow:0 0 6px rgba(255,75,60,.6)}
+.tlb b{position:absolute; top:-2px; width:2px; height:16px}
+.tlb .ln,.tlkey .ln{background:var(--amber)} .tlb .ka,.tlkey .ka{background:#fff} .tlb .imp,.tlkey .imp{background:var(--red); width:3px; outline:1px solid #000}
+.tlf{color:var(--dim); font-size:11px}
+.tlkey{display:flex; flex-wrap:wrap; gap:4px 12px; color:var(--dim); font-size:10.5px; padding-top:4px}
+.tlkey span{display:inline-flex; align-items:center; gap:5px}
+.tlkey b{display:inline-block; width:3px; height:11px} .tlkey .fly{position:static; display:inline-block; width:16px}
+.sysg{display:grid; grid-template-columns:auto minmax(0,1fr); gap:6px 10px; align-items:center}
+.sl{color:var(--dim); font-size:10.5px; letter-spacing:.12em}
+.sv{display:grid; gap:3px} .sv.ok{color:var(--green)} .sv.bad{color:var(--red)}
+.sv small{color:var(--dim); font-size:10.5px}
+.sv .seg button{font-size:12px; padding:.25em .5em}
+.budget{display:flex; height:9px; border:1px solid var(--line2); background:#0a0e0d}
+.budget i{background:var(--cyan); opacity:.75} .budget b{background:var(--amber)}
+.lk{display:inline-block; padding:1px 5px; border:1px solid currentColor; font-size:10.5px; margin:0 2px 2px 0} .lk.ok{color:var(--green)} .lk.bad{color:var(--red)}
+.flt{border:1px solid var(--red); border-left-width:4px; padding:7px 8px; display:grid; gap:4px; background:rgba(255,75,60,.06)}
+.flt.fixing{border-color:var(--amber); background:rgba(242,165,58,.06)}
+.fh{display:flex; gap:8px; align-items:baseline} .fh b{font-size:13px; color:var(--red)} .flt.fixing .fh b{color:var(--amber)} .fh em{margin-left:auto; font-style:normal; color:var(--dim)}
+.fe{color:var(--dim)} .fx{color:var(--amber)}
+.fa{display:grid; grid-template-columns:1fr 1fr; gap:4px}
+.fa button{border:1px solid #000; border-radius:2px; padding:6px 4px; cursor:pointer; font-family:var(--f-disp); font-weight:700; font-size:11.5px; letter-spacing:.05em; color:#c9d3cd; background:linear-gradient(#262e2b,#151a18); box-shadow:inset 0 1px 0 rgba(255,255,255,.08), 0 1px 0 #000}
+.fa button:active{transform:translateY(1px)}
+.fman{margin:8px 10px 12px; font-family:var(--f-data); font-size:11.5px; color:var(--dim); border:1px dashed var(--line2); padding:6px 8px}
+.fman summary{cursor:pointer; letter-spacing:.1em; color:var(--text)}
+.fman table{border-collapse:collapse; margin:6px 0; width:100%} .fman td{padding:3px 4px; border-bottom:1px solid var(--line)}
+.fman p{margin:4px 0 0; font-family:var(--f-body); font-size:12.5px}
+.crewc{padding:10px; display:grid; gap:6px}
+.crewc p{margin:0; font-family:var(--f-body); font-size:13.5px; color:var(--text)}
+.cn{font-family:var(--f-disp); font-weight:800; font-size:24px; letter-spacing:.03em}
+.kv2{display:grid; grid-template-columns:auto minmax(0,1fr); gap:5px 10px; align-items:center; font-size:10.5px; color:var(--dim); letter-spacing:.1em}
+.bar{display:block; height:7px; background:#0a0e0d; border:1px solid var(--line2)} .bar i{display:block; height:100%; background:var(--cyan)} .bar.warn i{background:var(--amber)}
+.dl{display:flex; gap:8px; align-items:center; font-family:var(--f-body); font-size:13.5px; cursor:pointer}
+.dl input{accent-color:var(--amber); width:16px; height:16px}
+.tcal{list-style:none; margin:0; padding:6px 10px 10px; display:grid; gap:4px; font-family:var(--f-data); font-size:11.5px}
+.tcal span{color:var(--faint); margin-right:6px}
+.rtg{display:inline-block; width:44px; height:7px; border:1px solid var(--line2); background:#0a0e0d}
+.rtg i{display:block; height:100%; width:100%; background:var(--cyan)} .rtg i.low{background:var(--amber)}
+.coach-brief.red{border-left-color:var(--red)}
+.redl{list-style:none; padding:0; margin:0 0 8px; display:grid; gap:8px}
+.redl li{display:grid; gap:2px} .redl b{color:var(--red); font-family:var(--f-disp); letter-spacing:.06em; font-size:16px} .redl span{color:var(--dim); font-size:13.5px}
+.cmp{border-collapse:collapse; font-family:var(--f-data); font-size:12.5px; margin:8px 0 12px; width:100%}
+.cmp td{padding:4px 6px; border-bottom:1px solid var(--line)} .cmp td:not(:first-child){text-align:right; width:4.5em} .cmp tr:first-child td{color:var(--dim); font-size:10.5px; letter-spacing:.12em}
+
+.sv.lks{display:flex; flex-wrap:wrap; gap:4px}

@@ -10,8 +10,8 @@ const byId = id => SCN.find(s => s.id === id);
 
 // ---------- persistence ----------
 const store = {
-  d:{s:{skin:'wmi', voice:true, vol:.7, expert:false, diff:'normal', speed:1, unlockAll:false}, p:{tables:{}, best:{}, cert:false, plays:0}, camp:{}},
-  load(){ try { const j = JSON.parse(localStorage.getItem('hostiletrack.v1') || 'null'); if (j){ Object.assign(this.d.s, j.s || {}); Object.assign(this.d.p, j.p || {}); this.d.camp = j.camp || {}; } } catch (e) {} },
+  d:{s:{skin:'wmi', voice:true, vol:.7, expert:false, diff:'normal', speed:1, unlockAll:false, red:'adaptive', tca:'alvarez', delegate:{reload:true, faults:true}}, p:{tables:{}, best:{}, cert:false, plays:0}, camp:{}, red:{}},
+  load(){ try { const j = JSON.parse(localStorage.getItem('hostiletrack.v1') || 'null'); if (j){ Object.assign(this.d.s, j.s || {}); Object.assign(this.d.p, j.p || {}); this.d.camp = j.camp || {}; this.d.red = j.red || {}; } } catch (e) {} },
   save(){ try { localStorage.setItem('hostiletrack.v1', JSON.stringify(this.d)); } catch (e) {} },
   get s(){ return this.d.s; }, get p(){ return this.d.p; },
 };
@@ -150,9 +150,9 @@ function unproj(v, px, py){ return {x:v.cx + (px - v.W / 2) / v.s, y:v.cy - (py 
 function polyline(ctx, v, pts, z = 0){ ctx.beginPath(); pts.forEach((p, i) => { const q = proj(v, p[0] ?? p.x, p[1] ?? p.y, z); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); }
 function circleW(ctx, v, cx, cy, r, z = 0){ ctx.beginPath(); for (let a = 0; a <= 72; a++){ const p = H.polar(a * 5, r, {x:cx, y:cy}), q = proj(v, p.x, p.y, z); a ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); } }
 const lowCache = {};
-function lowLine(map, mk, bx, by, ptl){
-  const key = mk + bx + ',' + by + ',' + ptl; if (lowCache[key]) return lowCache[key];
-  const pts = []; for (let a = ptl - 60; a <= ptl + 60.01; a += 2){ const r = H.lowAltReach(map, bx, by, a, .1); const p = H.polar(a, r, {x:bx, y:by}); pts.push([p.x, p.y]); }
+function lowLine(map, mk, bx, by, ptl, half = 60){
+  const key = mk + bx + ',' + by + ',' + ptl + ',' + half; if (lowCache[key]) return lowCache[key];
+  const pts = []; for (let a = ptl - half; a <= ptl + half + .01; a += 2){ const r = H.lowAltReach(map, bx, by, a, .1); const p = H.polar(a, r, {x:bx, y:by}); pts.push([p.x, p.y]); }
   return (lowCache[key] = pts);
 }
 
@@ -192,14 +192,14 @@ function drawBase(ctx, v, M){
   }
   if (M.showFan !== false){
     const ptl = M.ptlPreview != null ? M.ptlPreview : B.ptl;
-    const pts = [[B.x, B.y]]; for (let a = ptl - 60; a <= ptl + 60.01; a += 2){ const p = H.polar(a, H.RADAR.rmax, B); pts.push([p.x, p.y]); } pts.push([B.x, B.y]);
+    const half = B.half || 60, pts = [[B.x, B.y]]; for (let a = ptl - half; a <= ptl + half + .01; a += 2){ const p = H.polar(a, H.RADAR.rmax, B); pts.push([p.x, p.y]); } pts.push([B.x, B.y]);
     polyline(ctx, v, pts);
     const q0 = proj(v, B.x, B.y), gr = ctx.createRadialGradient(q0[0], q0[1], 0, q0[0], q0[1], H.RADAR.rmax * v.s);
     const on = B.on !== false, cc = P.legacy ? '90,255,130' : '82,205,224';
     gr.addColorStop(0, on ? `rgba(${cc},.10)` : 'rgba(120,120,120,.05)'); gr.addColorStop(1, on ? `rgba(${cc},.025)` : 'rgba(120,120,120,.02)');
     ctx.fillStyle = gr; ctx.fill();
     ctx.strokeStyle = on ? P.cyan : P.faint; ctx.globalAlpha = .5; ctx.stroke(); ctx.globalAlpha = 1;
-    const low = lowLine(map, M.mapKey, B.x, B.y, ptl); polyline(ctx, v, low); ctx.setLineDash([3, 4]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .6; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    const low = lowLine(map, M.mapKey, B.x, B.y, ptl, half); polyline(ctx, v, low); ctx.setLineDash([3, 4]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .6; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     const lp = low[Math.floor(low.length * .8)], lq = proj(v, lp[0], lp[1]); ctx.fillStyle = P.amber; ctx.globalAlpha = .75; ctx.fillText('100 m LIMIT', lq[0] + 4, lq[1] - 3); ctx.globalAlpha = 1;
     const pe = H.polar(ptl, H.RADAR.rmax, B); polyline(ctx, v, [[B.x, B.y], [pe.x, pe.y]]); ctx.setLineDash([10, 6]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .55; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     const pq = proj(v, H.polar(ptl, 130, B).x, H.polar(ptl, 130, B).y); ctx.fillStyle = P.amber; ctx.font = `600 11px ${P.mono}`; ctx.fillText('PTL ' + pad(Math.round(ptl) % 360, 3), pq[0] + 6, pq[1]); ctx.font = `10px ${P.mono}`;
@@ -232,11 +232,11 @@ function drawLive(ctx, v, M, now, glow){
   const ng = () => { ctx.shadowBlur = 0; };
   for (const j of M.jammers || []){ const b = H.brgOf(j.x - B.x, j.y - B.y), e = H.polar(b, 170, B); polyline(ctx, v, [[B.x, B.y], [e.x, e.y]]); ctx.strokeStyle = P.red; ctx.globalAlpha = .18 + Math.random() * .12; ctx.lineWidth = Math.max(4, 14 * v.s * .3); ctx.setLineDash([2, 3]); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1; ctx.globalAlpha = 1; }
   if (M.showFan !== false && B.on !== false && now){
-    const ptl = B.ptl, ph = (now / 2400) % 2, dir = ph < 1 ? 1 : -1, f = ph < 1 ? ph : 2 - ph, sw = ptl - 60 + f * 120;
+    const ptl = B.ptl, half = B.half || 60, ph = (now / (2400 * half / 60)) % 2, dir = ph < 1 ? 1 : -1, f = ph < 1 ? ph : 2 - ph, sw = ptl - half + f * half * 2;
     const q0 = proj(v, B.x, B.y), sc = P.legacy ? '140,255,150' : '110,225,240';
     for (let k = 14; k >= 0; k--){ // afterglow: wedges fading behind the beam
       const a0 = sw - dir * (k + 1) * 1.4, a1 = sw - dir * k * 1.4;
-      if (Math.abs(H.angDiff(a0, ptl)) > 60 || Math.abs(H.angDiff(a1, ptl)) > 60) continue;
+      if (Math.abs(H.angDiff(a0, ptl)) > half || Math.abs(H.angDiff(a1, ptl)) > half) continue;
       const pa = H.polar(a0, H.RADAR.rmax, B), pb = H.polar(a1, H.RADAR.rmax, B), qa = proj(v, pa.x, pa.y), qb = proj(v, pb.x, pb.y);
       ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(qa[0], qa[1]); ctx.lineTo(qb[0], qb[1]); ctx.closePath();
       ctx.fillStyle = `rgba(${sc},${(.13 * (1 - k / 15)).toFixed(3)})`; ctx.fill();
@@ -246,7 +246,7 @@ function drawLive(ctx, v, M, now, glow){
     if (M.clutter && !v.tilt){ // raw video: returns near the radar and on ridges, painted by the beam and decaying
       const C = M.clutter;
       for (let k = 0; k < 3; k++){ const r = Math.random() ** 2 * 24 + 1, p = H.polar(sw + (Math.random() - .5) * 4, r, B); C.push({x:p.x, y:p.y, t0:now}); }
-      for (const rd of MAP[M.mapKey].ridges || []){ const t = Math.random(), x = rd.a[0] + (rd.b[0] - rd.a[0]) * t, y = rd.a[1] + (rd.b[1] - rd.a[1]) * t; const b = H.brgOf(x - B.x, y - B.y), d = Math.hypot(x - B.x, y - B.y); if (d < 100 && Math.abs(H.angDiff(b, sw)) < 3 && Math.abs(H.angDiff(b, ptl)) <= 60) C.push({x:x + (Math.random() - .5) * 2, y:y + (Math.random() - .5) * 2, t0:now}); }
+      for (const rd of MAP[M.mapKey].ridges || []){ const t = Math.random(), x = rd.a[0] + (rd.b[0] - rd.a[0]) * t, y = rd.a[1] + (rd.b[1] - rd.a[1]) * t; const b = H.brgOf(x - B.x, y - B.y), d = Math.hypot(x - B.x, y - B.y); if (d < 100 && Math.abs(H.angDiff(b, sw)) < 3 && Math.abs(H.angDiff(b, ptl)) <= half) C.push({x:x + (Math.random() - .5) * 2, y:y + (Math.random() - .5) * 2, t0:now}); }
       while (C.length && now - C[0].t0 > 1800) C.shift();
       for (const c of C){ const s = proj(v, c.x, c.y); ctx.fillStyle = `rgba(${sc},${(.5 * (1 - (now - c.t0) / 1800)).toFixed(3)})`; ctx.fillRect(s[0] - .8, s[1] - .8, 1.8, 1.8); }
     }
@@ -363,6 +363,11 @@ function openBrief(scn, camp){
   show('brief');
   const W = s => s.split(' ');
   const ld = scn.launchers.map((L, i) => `<span>LS${i + 1} ${L[0] === 'MSE' ? L[1] + '× MSE' : L[0] === 'GEMT' ? L[2] + '× GEM-T' : L[1] + '× MSE + ' + L[2] + '× GEM-T'}</span>`).join('') + `<span>RESERVE ${scn.reserve.MSE} MSE · ${scn.reserve.GEMT} GEM-T</span>`;
+  const redOn = store.s.red !== 'scripted' && !scn.tutorial, redPlan = redOn ? H.planRed({scn}, store.d.red || {}) : [];
+  const nb = (store.d.red && store.d.red.battles) || 0;
+  const redNote = redOn ? `<h3>Red commander</h3><p class="coach-brief red"><b>${nb ? `Red has studied ${nb} of your battle${nb > 1 ? 's' : ''}.` : 'Red has not fought you yet.'}</b> Intelligence expects: ${redPlan.map(t => esc(t.hint)).join(' ')}</p>` : '';
+  BR.tca = store.s.tca || 'alvarez';
+  const fatOf = id => camp ? ((camp.fatigue || {})[id] || 0) : 0;
   const campNote = camp ? `<p class="coach-brief">Campaign: launchers load from your stock (${camp.stock.MSE} MSE, ${camp.stock.GEMT} GEM-T). What you do not fire carries to the next battle.</p>` : '';
   const tb = scn.tutorial && scn.tutorial.table, locked = !!scn.lockEmplace;
   const tutNote = tb ? `<h3>How this table passes</h3><ul class="objs" id="bObj"></ul>${tb === 1 ? '<p class="coach-brief">Drag on the map to swing the PTL. Click a site button to move the battery. The checklist updates as you go.</p>' : ''}` : '';
@@ -382,6 +387,7 @@ function openBrief(scn, camp){
      <div class="roe"><span>ADW <b class="chip c-${scn.adw}">${scn.adw}</b></span><span>WCS <b class="chip c-${scn.wcs}">${scn.wcs}</b></span><span>TD <b>${esc(scn.td)}</b></span><span>CALL SIGN <b>${esc(scn.bty)}</b></span></div>
      <h3>Load-out</h3><div class="loadout">${ld}</div>
      ${campNote}
+     ${redNote}
    </div>
    <div>
      <h3 style="margin-top:0">Emplacement</h3>
@@ -395,6 +401,7 @@ function openBrief(scn, camp){
        <label>TBM DOCTRINE</label><div class="seg" data-doc="TBM">${['SINGLE','RIPPLE','SLS'].map(m => `<button type="button" data-v="${m}" class="${m === 'RIPPLE' ? 'on' : ''}">${m === 'SLS' ? 'SHOOT-LOOK-SHOOT' : m}</button>`).join('')}</div>
        <label>AIR DOCTRINE</label><div class="seg" data-doc="AIR">${['SINGLE','RIPPLE','SLS'].map(m => `<button type="button" data-v="${m}" class="${m === 'SLS' ? 'on' : ''}">${m === 'SLS' ? 'SHOOT-LOOK-SHOOT' : m}</button>`).join('')}</div>
        <label>DRONE DOCTRINE</label><div class="seg" data-doc="UAV">${['SINGLE','RIPPLE','SLS'].map(m => `<button type="button" data-v="${m}" class="${m === 'SINGLE' ? 'on' : ''}">${m === 'SLS' ? 'SHOOT-LOOK-SHOOT' : m}</button>`).join('')}</div>
+       <label>TCA</label><div><div class="seg" id="bCrew">${H.CREW.map(c => `<button type="button" data-v="${c.id}" class="${c.id === BR.tca ? 'on' : ''}">${esc(c.name)}</button>`).join('')}</div><div class="eyebrow" id="bCrewNote" style="letter-spacing:.04em;margin-top:6px"></div></div>
        <label>SEED</label><div><input class="seedin" id="bSeed" type="text" inputmode="numeric" value="${BR.seed}" aria-label="Raid seed"> <span class="eyebrow" style="letter-spacing:.06em">Same seed, same raid</span></div>
      </div>
      <div class="go"><button class="btn primary big" type="button" id="bGo">Take the watch</button></div>
@@ -403,6 +410,9 @@ function openBrief(scn, camp){
   $('#bSites').querySelectorAll('button').forEach(b => b.onclick = () => { BR.site = +b.dataset.i; $('#bSites').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); briefDraw(); });
   $('#bMode').querySelectorAll('button').forEach(b => b.onclick = () => { BR.mode = b.dataset.v; $('#bMode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
   $$('[data-doc]').forEach(g => g.querySelectorAll('button').forEach(b => b.onclick = () => { BR.doctrine[g.dataset.doc] = b.dataset.v; g.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); }));
+  const crewNote = () => { const c = H.CREW.find(x => x.id === BR.tca), f = fatOf(c.id); $('#bCrewNote').textContent = `${c.note} Skill ${Math.round(c.skill * 100)}.${f ? ' Fatigue ' + Math.round(f * 100) + '%.' : ''}`; };
+  crewNote();
+  $('#bCrew').querySelectorAll('button').forEach(b => b.onclick = () => { BR.tca = b.dataset.v; store.s.tca = BR.tca; store.save(); $('#bCrew').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); crewNote(); });
   $('#bGo').onclick = () => { const sv = parseInt($('#bSeed').value, 10); if (sv > 0) BR.seed = sv; startBattle(); };
   const cv = $('#bMap');
   const setFrom = ev => { const r = cv.getBoundingClientRect(), w = unproj(BR.view, ev.clientX - r.left, ev.clientY - r.top), s = scn.sites[BR.site]; BR.ptl = Math.round(H.brgOf(w.x - s.x, w.y - s.y)); briefDraw(); };
@@ -433,19 +443,26 @@ function briefDraw(){
 let S = null, B = null, rafId = 0;
 function startBattle(){
   const scn = BR.scn;
-  const o = {seed:BR.seed, site:BR.site, ptl:BR.ptl, mode:BR.mode, doctrine:{...BR.doctrine}, difficulty:store.s.diff};
+  const o = {seed:BR.seed, site:BR.site, ptl:BR.ptl, mode:BR.mode, doctrine:{...BR.doctrine}, difficulty:store.s.diff,
+    red:store.s.red !== 'scripted' && !scn.tutorial ? (store.d.red || {}) : null,
+    tca:{id:BR.tca || store.s.tca, fatigue:BR.camp ? ((BR.camp.fatigue || {})[BR.tca] || 0) : 0, delegate:{...(store.s.delegate || {})}}};
   if (BR.camp){ o.stock = {...BR.camp.stock}; o.xp = BR.camp.xp; }
-  S = H.createSim(scn, o);
-  B = {view:{cx:S.bat.x, cy:S.bat.y, s:2.2, W:100, H:100, tilt:false}, hooked:null, hits:[], hist:{}, trails:{}, fx:[], scars:[], speed:store.s.speed || 1, acc:0, last:performance.now(), logN:0, panelT:0, wpn:'AUTO', cardFor:null, coach:null, sheet:'', toastT:0, camp:BR.camp, brief:{...BR}, idLog:{}};
-  store.p.plays++; store.save();
+  launchBattle(H.createSim(scn, o), {camp:BR.camp, brief:{...BR}});
+}
+function launchBattle(sim, ctx){
+  S = sim; const scn = S.scn;
+  B = {view:{cx:S.bat.x, cy:S.bat.y, s:2.2, W:100, H:100, tilt:false}, hooked:null, hits:[], hist:{}, trails:{}, fx:[], scars:[], speed:store.s.speed || 1, acc:0, last:performance.now(), logN:0, panelT:0, wpn:'AUTO', cardFor:null, coach:null, sheet:'', toastT:0, camp:ctx.camp, brief:ctx.brief, idLog:{}, rewound:S.rewoundAt != null, page:'trk', h:{}};
+  if (!B.rewound){ store.p.plays++; store.save(); }
+  $('#sysPage').innerHTML = '<div id="sysLive"></div>' + MANUAL();
   show('battle');
   const bt = $('#scr-battle'); bt.dataset.sheet = '';
   $('#log').innerHTML = '';
   $('#sDisp').hidden = !scn.displace;
-  setupCoach();
+  if (B.rewound){ B.coach = null; $('#coach').hidden = true; B.U = {hooked:{kinds:new Set(), ent:null}}; } else setupCoach();
   AU.init(); AU.startAmb();
   VO.stop();
-  fitView(); renderLaunchers(true); updatePanels(true);
+  fitView(); setPage('trk'); renderLaunchers(true); updatePanels(true);
+  if (B.rewound){ B.speed = 0; toast('REWIND', `You have the seat at T+${fmtT(S.t)}. The clock is stopped: press 1× to fight on.`); }
   cancelAnimationFrame(rafId); rafId = requestAnimationFrame(loop);
 }
 function fitView(){
@@ -467,7 +484,7 @@ function loop(now){
   if (!B.baseCv){ B.baseCv = document.createElement('canvas'); B.clutter = []; }
   if (B.baseCv.width !== cv.width || B.baseCv.height !== cv.height){ B.baseCv.width = cv.width; B.baseCv.height = cv.height; B.baseKey = ''; }
   const v = B.view, P = pal();
-  const key = [v.cx.toFixed(2), v.cy.toFixed(2), v.s.toFixed(3), v.tilt, cv.width, cv.height, M.bat.ptl, M.bat.x, M.bat.y, M.bat.on, M.bat.alive, S.assets.map(a => a.hp).join(), S.launchers.map(L => L.dead ? 1 : 0).join(''), S.neighbors.map(n => n.on ? 1 : 0).join(''), B.scars.length, P.legacy].join('|');
+  const key = [v.cx.toFixed(2), v.cy.toFixed(2), v.s.toFixed(3), v.tilt, cv.width, cv.height, M.bat.ptl, M.bat.half, M.bat.x, M.bat.y, M.bat.on, M.bat.alive, S.assets.map(a => a.hp).join(), S.launchers.map(L => L.dead ? 1 : 0).join(''), S.neighbors.map(n => n.on ? 1 : 0).join(''), B.scars.length, P.legacy].join('|');
   if (key !== B.baseKey){ B.baseKey = key; const bctx = B.baseCv.getContext('2d'); bctx.setTransform(dpr, 0, 0, dpr, 0, 0); drawBase(bctx, v, M); }
   M.clutter = B.clutter;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(B.baseCv, 0, 0);
@@ -494,7 +511,7 @@ function liveModel(now){
   }
   const ms = [];
   for (const m of S.ms){ if (!m.alive) continue; const tr = B.trails[m.id] || (B.trails[m.id] = []); const last = tr[tr.length - 1]; if (!last || Math.hypot(last[0] - m.x, last[1] - m.y) > .8) { tr.push([m.x, m.y, m.z]); if (tr.length > 40) tr.shift(); } ms.push({x:m.x, y:m.y, z:m.z, own:m.owner === 'own', trail:tr}); }
-  return {mapKey:S.scn.map, bat:{x:S.bat.x, y:S.bat.y, ptl:S.bat.ptl, on:H.radarOn(S), alive:S.bat.alive}, launchers:S.launchers, assets:S.assets, ents, ms, fx:B.fx, scars:B.scars, neighbors:S.neighbors, jammers:S.ents.filter(e => e.alive && e.kind === 'JAM'), hooked:B.hooked, bty:S.scn.bty.split(' ')[0]};
+  return {mapKey:S.scn.map, bat:{x:S.bat.x, y:S.bat.y, ptl:S.bat.ptl, half:S.bat.half, on:H.radarOn(S), alive:S.bat.alive}, launchers:S.launchers, assets:S.assets, ents, ms, fx:B.fx, scars:B.scars, neighbors:S.neighbors, jammers:S.ents.filter(e => e.alive && e.kind === 'JAM'), hooked:B.hooked, bty:S.scn.bty.split(' ')[0]};
 }
 function drain(now){
   for (const o of S.out){
@@ -548,6 +565,10 @@ function updatePanels(force){
   renderQueue(q);
   renderCard();
   renderLaunchers();
+  const rf = Math.round(S.radar.searchF * (S.bat.half < 60 ? 125 : 100) * (S.bat.radarFault ? .6 : 1));
+  $('#sRt').textContent = rf + '%'; $('#sRtg').style.width = Math.min(100, rf) + '%'; $('#sRtg').classList.toggle('low', rf < 75);
+  const sysAlert = S.faults.length > 0; const sk = $('#pageKeys [data-pg="sys"]'); if (sk) sk.classList.toggle('alert', sysAlert);
+  renderPage();
 }
 
 function renderQueue(q){
@@ -585,8 +606,8 @@ function renderCard(){
       <button class="engage" type="button" id="cEng"><i></i><span>${store.s.expert ? 'ENGAGE' : 'HOLD TO ENGAGE'}</span></button>
       <div class="eyebrow" id="cMsg" style="letter-spacing:.06em;min-height:1.2em"></div>`;
     $('#cIds').querySelectorAll('button').forEach(b => b.onclick = () => declare(hookedEnt(), b.dataset.id));
-    $('#cIffB').onclick = () => { const x = hookedEnt(); if (x) H.playerIff(S, x); };
-    $('#cHold').onclick = () => { const x = hookedEnt(); if (x) H.holdFire(S, x); };
+    $('#cIffB').onclick = () => { const x = hookedEnt(); if (x) H.cmd(S, 'iff', {uid:x.uid}); };
+    $('#cHold').onclick = () => { const x = hookedEnt(); if (x) H.cmd(S, 'hold', {uid:x.uid}); };
     $('#cW').querySelectorAll('button').forEach(b => b.onclick = () => { B.wpn = b.dataset.w; });
     holdButton($('#cEng'), () => tryEngage(hookedEnt()));
   }
@@ -626,11 +647,11 @@ function cardMsg(t){ const m = $('#cMsg'); if (m){ m.textContent = t; clearTimeo
 
 function tryEngage(e){
   if (!e) return;
-  const r = H.engage(S, e, {src:'player', wpn:B.wpn});
+  const r = H.cmd(S, 'engage', {uid:e.uid, wpn:B.wpn});
   if (r.ok){ cardMsg('ENGAGEMENT ORDERED'); return; }
   if (r.viol){
     modal('ROE warning', `<p>Engaging track <b>${e.trk.num}</b> breaks your rules of engagement:</p><ul>${r.viol.map(v => `<li>${esc(v)}</li>`).join('')}</ul><p>The TD will log a violation. A shot at a protected aircraft ends the battle.</p>`,
-      [{t:'Cancel'}, {t:'Fire anyway', cls:'danger', f:() => { const r2 = H.engage(S, e, {src:'player', wpn:B.wpn, force:true}); if (!r2.ok) cardMsg(r2.why); }}], true);
+      [{t:'Cancel'}, {t:'Fire anyway', cls:'danger', f:() => { const r2 = H.cmd(S, 'engage', {uid:e.uid, wpn:B.wpn, force:true}); if (!r2.ok) cardMsg(r2.why); }}], true);
     return;
   }
   cardMsg(r.why); AU.tone('fault');
@@ -638,10 +659,10 @@ function tryEngage(e){
 function declare(e, id){
   if (!e) return;
   if (id === 'HOS' && e.trk.iff === 'M4 VALID' && !store.s.expert){
-    modal('Mode 4 valid', `<p>Track ${e.trk.num} answers Mode 4 valid. That is a friendly transponder. Declare it hostile anyway?</p>`, [{t:'Cancel'}, {t:'Declare hostile', cls:'danger', f:() => H.playerId(S, e, id)}], true);
+    modal('Mode 4 valid', `<p>Track ${e.trk.num} answers Mode 4 valid. That is a friendly transponder. Declare it hostile anyway?</p>`, [{t:'Cancel'}, {t:'Declare hostile', cls:'danger', f:() => H.cmd(S, 'id', {uid:e.uid, id})}], true);
     return;
   }
-  H.playerId(S, e, id); AU.tone('click');
+  H.cmd(S, 'id', {uid:e.uid, id}); AU.tone('click');
 }
 
 function renderLaunchers(force){
@@ -670,21 +691,24 @@ function setSheet(p){
 // battle input wiring (once)
 function wireBattle(){
   $('#sMode').onclick = ev => { const b = ev.target.closest('button'); if (!b || !S) return; const m = b.dataset.m;
-    if (m === 'AUTO' && !B.autoWarned && !store.s.expert){ B.autoWarned = true; modal('Automatic mode', '<p>The computer will declare any silent, closing air track hostile and fire after a five-second veto window. It does not know about corridors or broken transponders. Watch the queue for VETO.</p>', [{t:'Cancel'}, {t:'Go automatic', cls:'danger', f:() => H.setMode(S, 'AUTO')}], true); return; }
-    H.setMode(S, m); };
+    if (m === 'AUTO' && !B.autoWarned && !store.s.expert){ B.autoWarned = true; modal('Automatic mode', '<p>The computer will declare any silent, closing air track hostile and fire after a five-second veto window. It does not know about corridors or broken transponders. Watch the queue for VETO.</p>', [{t:'Cancel'}, {t:'Go automatic', cls:'danger', f:() => H.cmd(S, 'mode', {v:'AUTO'})}], true); return; }
+    H.cmd(S, 'mode', {v:m}); };
   $('#sSpeed').onclick = ev => { const b = ev.target.closest('button'); if (b && B) B.speed = +b.dataset.s; };
-  $('#sEmcon').onclick = () => S && H.setEmcon(S, !S.bat.emcon);
+  $('#sEmcon').onclick = () => S && H.cmd(S, 'emcon', {v:!S.bat.emcon});
   $('#sPtl').onclick = () => { if (!S) return; const cur = Math.round(S.bat.ptl);
-    modal('Reorient PTL', `<p>The radar goes dark for 25 seconds while it slews. Threat axes: ${(S.scn.axis || []).map(a => pad(a, 3) + '°').join(', ')}.</p><p><input id="ptlIn" type="range" min="0" max="359" value="${cur}" style="width:100%;accent-color:var(--amber)"> <b id="ptlV" style="font-family:var(--f-data)">${pad(cur, 3)}°</b></p>`, [{t:'Cancel'}, {t:'Reorient', cls:'primary', f:() => H.reorient(S, +$('#ptlIn').value)}]);
+    modal('Reorient PTL', `<p>The radar goes dark for 25 seconds while it slews. Threat axes: ${(S.scn.axis || []).map(a => pad(a, 3) + '°').join(', ')}.</p><p><input id="ptlIn" type="range" min="0" max="359" value="${cur}" style="width:100%;accent-color:var(--amber)"> <b id="ptlV" style="font-family:var(--f-data)">${pad(cur, 3)}°</b></p>`, [{t:'Cancel'}, {t:'Reorient', cls:'primary', f:() => H.cmd(S, 'reorient', {ptl:+$('#ptlIn').value})}]);
     $('#ptlIn').oninput = () => $('#ptlV').textContent = pad(+$('#ptlIn').value, 3) + '°'; };
-  $('#sDisp').onclick = () => { if (!S) return; modal('March order', '<p>The battery goes offline for 50 seconds and re-emplaces at the new site.</p>', [{t:'Cancel'}, ...S.scn.sites.map((s, i) => ({t:s.name, cls:i === S.bat.site ? '' : 'primary', f:() => H.displace(S, i)})).filter((x, i) => i !== S.bat.site)]); };
+  $('#sDisp').onclick = () => { if (!S) return; modal('March order', '<p>The battery goes offline for 50 seconds and re-emplaces at the new site.</p>', [{t:'Cancel'}, ...S.scn.sites.map((s, i) => ({t:s.name, cls:i === S.bat.site ? '' : 'primary', f:() => H.cmd(S, 'displace', {site:i})})).filter((x, i) => i !== S.bat.site)]); };
   $('#sRadio').onclick = () => B && setSheet('radio');
-  $('#sEnd').onclick = () => { if (!S) return; const sp = B.speed; B.speed = 0; modal('End the watch', '<p>The battle is scored as it stands now.</p>', [{t:'Keep fighting', f:() => B.speed = sp || 1}, {t:'End watch', cls:'danger', f:() => { S.endAt = S.t; S.endReason = 'Ended by the TCO'; S.abandon = true; B.speed = 1; }}]); };
-  $('#btnAck').onclick = () => S && H.ack(S);
+  $('#sEnd').onclick = () => { if (!S) return; const sp = B.speed; B.speed = 0; modal('End the watch', '<p>The battle is scored as it stands now.</p>', [{t:'Keep fighting', f:() => B.speed = sp || 1}, {t:'End watch', cls:'danger', f:() => { H.cmd(S, 'end'); B.speed = 1; }}]); };
+  $('#btnAck').onclick = () => S && H.cmd(S, 'ack');
+  $('#pageKeys').onclick = ev => { const b = ev.target.closest('[data-pg]'); if (b && B) setPage(b.dataset.pg); };
+  $('#sysPage').addEventListener('pointerdown', ev => { if (!S) return; const f = ev.target.closest('[data-fix]'); if (f){ ev.preventDefault(); H.cmd(S, 'fix', {fid:+f.dataset.fix, act:f.dataset.act}); AU.tone('click'); return; } const sc = ev.target.closest('[data-sector]'); if (sc){ ev.preventDefault(); H.cmd(S, 'sector', {v:sc.dataset.sector}); return; } if (ev.target.closest('[data-emcon]')){ ev.preventDefault(); H.cmd(S, 'emcon', {v:!S.bat.emcon}); } });
+  $('#crewPage').addEventListener('change', ev => { const c = ev.target.closest('[data-del]'); if (!c || !S) return; H.cmd(S, 'delegate', {k:c.dataset.del, v:c.checked}); store.s.delegate = {...S.tca.delegate}; store.save(); });
   $('#ptabs').onclick = ev => { const b = ev.target.closest('button'); if (b && B) setSheet(b.dataset.p); };
   $$('[data-close]').forEach(b => b.onclick = () => B && setSheet(''));
-  $('#queue').addEventListener('pointerdown', ev => { const v = ev.target.closest('[data-veto]'); if (v){ ev.preventDefault(); H.veto(S, +v.dataset.veto); return; } const r = ev.target.closest('[data-uid]'); if (r) hook(+r.dataset.uid); });
-  $('#lnchRow').addEventListener('pointerdown', ev => { const b = ev.target.closest('[data-reload]'); if (b){ ev.preventDefault(); H.reload(S, +b.dataset.reload); } });
+  $('#queue').addEventListener('pointerdown', ev => { const v = ev.target.closest('[data-veto]'); if (v){ ev.preventDefault(); H.cmd(S, 'veto', {pid:+v.dataset.veto}); return; } const r = ev.target.closest('[data-uid]'); if (r) hook(+r.dataset.uid); });
+  $('#lnchRow').addEventListener('pointerdown', ev => { const b = ev.target.closest('[data-reload]'); if (b){ ev.preventDefault(); H.cmd(S, 'reload', {id:+b.dataset.reload}); } });
   $('#zIn').onclick = () => zoom(1.4); $('#zOut').onclick = () => zoom(1 / 1.4);
   $('#zCtr').onclick = () => { if (B){ B.view.cx = S.bat.x; B.view.cy = S.bat.y; } };
   $('#z3d').onclick = () => { if (!B) return; B.view.tilt = !B.view.tilt; if (B.U) B.U.tilted = true; $('#z3d').classList.toggle('on', B.view.tilt); };
@@ -704,24 +728,83 @@ function wireBattle(){
     if (UI.screen !== 'battle' || !S || !$('#modal').hidden) return;
     if (ev.target.matches('input,textarea')) return;
     const e = hookedEnt(), k = ev.key.toLowerCase();
-    if (k === ' '){ ev.preventDefault(); H.ack(S); }
+    if (k === ' '){ ev.preventDefault(); H.cmd(S, 'ack'); }
     else if (k === 'e'){ tryEngage(e); }
-    else if (k === 'h'){ if (e) H.holdFire(S, e); }
-    else if (k === 'i'){ if (e) H.playerIff(S, e); }
+    else if (k === 'h'){ if (e) H.cmd(S, 'hold', {uid:e.uid}); }
+    else if (k === 'i'){ if (e) H.cmd(S, 'iff', {uid:e.uid}); }
     else if ('12345'.includes(k) && k.length === 1){ declare(e, ['FRD','NEU','UNK','SUS','HOS'][+k - 1]); }
     else if (k === 'tab' || k === 'n'){ ev.preventDefault(); const un = S.ents.filter(x => x.alive && x.trk && x.trk.est && !x.trk.remote && (x.trk.id === 'PND' || x.trk.id === 'UNK')).map(x => x.uid); const list = un.length ? un : H.threatQueue(S).map(x => x.e.uid); if (list.length){ const i = list.indexOf(B.hooked); hook(list[(i + 1) % list.length]); } }
-    else if (k === 'v'){ const p = S.plans.find(x => x.state === 'VETO'); if (p) H.veto(S, p.id); }
-    else if (k === 'm'){ const ms = ['MANUAL','SEMI','AUTO']; H.setMode(S, ms[(ms.indexOf(S.mode) + 1) % 3]); }
+    else if (k === 'v'){ const p = S.plans.find(x => x.state === 'VETO'); if (p) H.cmd(S, 'veto', {pid:p.id}); }
+    else if (k === 'm'){ const ms = ['MANUAL','SEMI','AUTO']; H.cmd(S, 'mode', {v:ms[(ms.indexOf(S.mode) + 1) % 3]}); }
     else if (k === 'p'){ B.speed = B.speed ? 0 : 1; }
     else if (k === ']'){ B.speed = Math.min(4, (B.speed || .5) * 2); }
     else if (k === '['){ B.speed = B.speed <= 1 ? 1 : B.speed / 2; }
     else if (k === '+' || k === '='){ zoom(1.3); } else if (k === '-'){ zoom(1 / 1.3); }
     else if (k === 't'){ $('#z3d').click(); } else if (k === 'c'){ $('#zCtr').click(); }
     else if (k === 'escape'){ hook(null); setSheet(''); }
+    else if (['f1','f2','f3','f4'].includes(k)){ ev.preventDefault(); setPage(['trk','tl','sys','crew'][+k[1] - 1]); }
   });
   window.addEventListener('resize', () => { if (UI.screen === 'brief') briefDraw(); });
 }
 function zoom(f){ if (!B) return; B.view.s = Math.max(.25, Math.min(14, B.view.s * f)); }
+
+// ---------- station pages (2.0) ----------
+function setPage(pg){
+  if (!B) return;
+  B.page = pg; B.h = {};
+  $$('#pageKeys [data-pg]').forEach(b => b.classList.toggle('on', b.dataset.pg === pg));
+  $$('#pSide .pg').forEach(p => p.hidden = p.dataset.page !== pg);
+  renderPage();
+}
+function setHtml(el, html, k){ if (!el) return; B.h = B.h || {}; if (B.h[k] !== html){ el.innerHTML = html; B.h[k] = html; } }
+function renderPage(){ if (B.page === 'tl') renderTimeline(); else if (B.page === 'sys') renderSystem(); else if (B.page === 'crew') renderCrew(); }
+function renderTimeline(){
+  const W = 90, now = S.t, rows = [], pct = t => Math.max(0, Math.min(100, t / W * 100)).toFixed(1);
+  for (const p of S.plans){
+    if (p.state === 'DONE') continue;
+    const e = S.ents.find(x => x.uid === p.uid); if (!e || !e.alive) continue;
+    const a = H.assess(S, e), ms = S.ms.filter(m => m.alive && m.plan === p.id);
+    let bars = '';
+    for (const m of ms){ const t0 = Math.max(0, m.t0 - now), t1 = m.tEnd - now; bars += `<i class="fly" style="left:${pct(t0)}%;width:${(pct(t1) - pct(t0)).toFixed(1)}%"></i><b class="ka" style="left:${pct(t1)}%"></b>`; }
+    if (p.state === 'READY') bars += `<b class="ln" style="left:${pct(Math.max(0, p.fireAt - now))}%"></b>`;
+    if (a.dal && isFinite(a.tta)) bars += `<b class="imp" style="left:${pct(a.tta)}%"></b>`;
+    let status;
+    if (p.state === 'VETO') status = `VETO WINDOW ${Math.ceil(p.vetoT)} s`;
+    else if (p.state === 'WAIT'){ const s = H.solve(S, e, p.w); status = `WAITING · ${s.ok ? 'SOLUTION READY' : s.why}`; }
+    else if (p.state === 'READY') status = `LAUNCH IN ${Math.max(0, p.fireAt - now).toFixed(0)} s`;
+    else status = ms.length ? `${ms.length} AWAY · INTERCEPT IN ${Math.max(0, Math.ceil(ms[0].tEnd - now))} s` : 'KILL ASSESSMENT';
+    rows.push(`<div class="tlr"><div class="tlh"><b>${p.trk}</b><span>${e.T.cls}</span><span>${WEAPONS[p.w].name} · ${p.doc} · SALVO ${p.salvo}</span></div><div class="tls">${esc(status)}</div><div class="tlb">${bars}</div><div class="tlf">${a.dal ? esc(a.dal.name) + ' reached in ' + Math.round(a.tta) + ' s' : 'No defended asset threatened'}</div></div>`);
+  }
+  const axis = `<div class="tlax">${[0, 15, 30, 45, 60, 75, 90].map(t => `<span style="left:${(t / W * 100).toFixed(1)}%">${t}</span>`).join('')}</div>`;
+  const key = '<div class="tlkey"><span><b class="ln"></b>launch</span><span><i class="fly"></i>missile flight</span><span><b class="ka"></b>intercept</span><span><b class="imp"></b>threat reaches asset</span></div>';
+  setHtml($('#tlPage'), (rows.length ? axis + rows.join('') : '<div class="qempty">No engagements in progress. Each engagement appears here with its launch time, missile flight, intercept point and the moment the threat would reach its asset. If the red tick sits left of the intercept, the shot is too late.</div>') + key, 'tl');
+}
+function renderSystem(){
+  const b = S.bat, on = H.radarOn(S);
+  const st = !b.alive ? 'DESTROYED' : b.emcon ? 'SILENT · EMCON' : b.reorient > 0 ? `REORIENTING ${Math.ceil(b.reorient)} s` : b.displace > 0 ? `MARCH ORDER ${Math.ceil(b.displace)} s` : b.epp > 0 ? 'NO POWER' : b.radarFault ? 'RADIATING · DEGRADED' : 'RADIATING';
+  const tp = S.radar.trackPct, rng = Math.round(S.radar.searchF * (b.half < 60 ? 125 : 100) * (b.radarFault ? .6 : 1));
+  const faults = S.faults.map(f => `<div class="flt${f.fixing ? ' fixing' : ''}"><div class="fh"><b>BIT ${f.code}</b><span>${esc(f.title)}${f.ls ? ' · LS' + f.ls : ''}</span><em>${fmtT(S.t - f.t0)}</em></div><div class="fe">${esc(f.effect)}${f.tries ? ` · ${f.tries} failed attempt${f.tries > 1 ? 's' : ''}` : ''}</div>${f.fixing ? `<div class="fx">${esc(f.fixing.action)} · ${f.fixing.by === 'TCO' ? 'you' : esc(S.tca.name)} · ${Math.max(0, Math.ceil(f.fixing.until - S.t))} s</div>` : `<div class="fa">${H.FIX_ACTIONS.map(a => `<button type="button" data-fix="${f.id}" data-act="${a}">${a}</button>`).join('')}</div>`}</div>`).join('');
+  setHtml($('#sysLive'), `<div class="sysg">
+    <span class="sl">RADAR</span><span class="sv ${on ? 'ok' : 'bad'}">${st}</span>
+    <span class="sl">SECTOR</span><span class="sv"><span class="seg"><button type="button" data-sector="WIDE" class="${b.sector === 'WIDE' ? 'on' : ''}">WIDE ±60°</button><button type="button" data-sector="NARROW" class="${b.sector === 'NARROW' ? 'on' : ''}">NARROW ±30°</button></span></span>
+    <span class="sl">RADAR TIME</span><span class="sv"><span class="budget"><i style="width:${100 - tp}%"></i><b style="width:${tp}%"></b></span><small>SEARCH ${100 - tp}% · TRACK ${tp}% · ${S.radar.load} TRACKS · SEARCH RANGE ${rng}%</small></span>
+    <span class="sl">EMCON</span><span class="sv"><button type="button" class="tbtn${b.emcon ? ' on' : ''}" data-emcon="1">${b.emcon ? 'SILENT · RADIATE' : 'RADIATING · GO SILENT'}</button></span>
+    <span class="sl">POWER</span><span class="sv ${b.epp ? 'bad' : 'ok'}">${b.epp ? 'PRIME POWER FAULT' : 'EPP III ONLINE'}</span>
+    <span class="sl">WCC</span><span class="sv ${S.wccSlow ? 'bad' : 'ok'}">${S.wccSlow ? 'DEGRADED · +4 S PER SOLUTION' : 'NOMINAL'}</span>
+    <span class="sl">LINKS</span><span class="sv lks">${S.launchers.map(L => `<span class="lk ${L.dead || L.state === 'COMMS' ? 'bad' : 'ok'}">LS${L.id}</span>`).join(' ')}</span>
+  </div><div class="ph"><span>ACTIVE FAULTS · ${S.faults.length}</span></div>${faults || '<div class="qempty">BIT clean. No active faults.</div>'}`, 'sys');
+}
+function renderCrew(){
+  const t = S.tca, c = H.CREW.find(x => x.id === t.id), bar = (v, cls) => `<span class="bar ${cls || ''}"><i style="width:${Math.round(v * 100)}%"></i></span>`;
+  setHtml($('#crewPage'), `<div class="crewc"><div class="cn">${esc(t.name)}</div><div class="eyebrow">TACTICAL CONTROL ASSISTANT · MANSTATION 2</div><p>${esc(c.note)}</p>
+    <div class="kv2"><span>SKILL</span>${bar(t.skill)}<span>FATIGUE</span>${bar(t.fatigue, 'warn')}<span>EFFECTIVE</span>${bar(H.tcaEff(S))}</div></div>
+    <div class="ph"><span>DELEGATED TASKS</span></div>
+    <div class="crewc"><label class="dl"><input type="checkbox" data-del="reload" ${t.delegate.reload ? 'checked' : ''}> Reload empty launchers</label>
+    <label class="dl"><input type="checkbox" data-del="faults" ${t.delegate.faults ? 'checked' : ''}> Isolate and fix BIT faults</label>
+    <p class="eyebrow" style="letter-spacing:.04em">A tired TCA fixes faults slower, picks the wrong procedure more often and misses callouts. Untick a task to do it yourself on the SYSTEM page.</p></div>
+    <div class="ph"><span>LATEST FROM THE TCA</span></div><ol class="tcal">${S.log.filter(l => l.who === 'TCA').slice(-8).reverse().map(l => `<li><span>${fmtT(l.t)}</span>${esc(l.text)}</li>`).join('') || '<li>Quiet so far.</li>'}</ol>`, 'crew');
+}
+const MANUAL = () => `<details class="fman"><summary>FAULT ISOLATION MANUAL · EXTRACT</summary><table>${Object.values(H.FAULTS).map(F => `<tr><td>${F.fam}xx</td><td>${esc(F.title)}</td><td>${esc(F.fix)}</td></tr>`).join('')}</table><p>Read the first digit of the BIT code and apply the matching procedure. A wrong procedure costs 15 seconds. Unfixed faults clear on their own after one to two minutes. Game values, not the real technical manual.</p></details>`;
 
 // ---------- coach ----------
 const ROMAN = ['','I','II','III','IV','V','VI','VII','VIII'];
@@ -774,7 +857,8 @@ function endBattle(){
   if (!S) return;
   VO.stop(); AU.stopAmb();
   const sc = S.score, prev = store.p.best[S.scn.id];
-  if (prev == null || sc.total > prev) store.p.best[S.scn.id] = sc.total;
+  if (!B.rewound && (prev == null || sc.total > prev)) store.p.best[S.scn.id] = sc.total;
+  if (!B.rewound && !S.scn.tutorial && store.s.red !== 'scripted') store.d.red = H.learnRed(store.d.red || {}, S);
   const tp = tableResult();
   let unlockedNow = false;
   if (tp && tp.ok){ store.p.tables[S.scn.tutorial.table] = true; if (S.scn.tutorial.table === 8 && !store.p.cert){ store.p.cert = true; unlockedNow = true; } }
@@ -793,7 +877,7 @@ function openAAR(tp, unlockedNow, campRes){
   const verdict = tp ? `<div class="verdict ${tp.ok ? 'pass' : 'fail'}">${tp.ok ? 'Table passed' : 'Table not passed'}</div><ul class="objs">${tp.objs.map(o => `<li class="${o.ok ? 'ok' : 'no'}"><i>${o.ok ? '✓' : '✗'}</i><span>${esc(o.t)}${!o.ok && o.tip ? `<em>${esc(o.tip)}</em>` : ''}</span></li>`).join('')}</ul>` : sc.frat ? '<div class="verdict fail">Relieved of duty</div>' : `<div class="verdict ${sc.total >= 80 ? 'pass' : sc.total >= 60 ? '' : 'fail'}">${sc.total >= 90 ? 'Outstanding watch' : sc.total >= 80 ? 'Assets held' : sc.total >= 60 ? 'Mission accomplished with losses' : 'Defense failed'}</div>`;
   const cat = (l, v, m) => `<div class="cat"><span class="l">${l}</span><span class="v">${v}<small> / ${m}</small></span><span class="bar"><i style="width:${Math.round(v / m * 100)}%"></i></span></div>`;
   $('#aarBody').innerHTML = `
-    <div class="aar-top"><div><div class="eyebrow">AFTER ACTION REVIEW · ${esc(scn.bty)} · SEED ${S.seed}</div><h2>${esc(scn.table ? scn.name.split('· ')[1] : scn.name)}</h2><div class="eyebrow" style="letter-spacing:.06em;margin:4px 0 8px">${esc(scn.place)} · ${esc(S.endReason)} · T+${fmtT(S.t)}</div>${verdict}
+    <div class="aar-top"><div><div class="eyebrow">AFTER ACTION REVIEW · ${esc(scn.bty)} · SEED ${S.seed}</div><h2>${esc(scn.table ? scn.name.split('· ')[1] : scn.name)}</h2><div class="eyebrow" style="letter-spacing:.06em;margin:4px 0 8px">${esc(scn.place)} · ${esc(S.endReason)} · T+${fmtT(S.t)}${B.rewound ? ' · REWOUND FROM T+' + fmtT(S.rewoundAt) + ' · NOT RECORDED' : ''}</div>${verdict}
       ${unlockedNow ? '<p class="coach-brief"><b>Crew certified.</b> The campaign and the legacy console are unlocked. Switch consoles in Settings.</p>' : ''}
       ${campRes ? `<p class="coach-brief">${esc(campRes)}</p>` : ''}</div>
       <div class="total">${sc.total}<small> / 100</small></div></div>
@@ -803,6 +887,7 @@ function openAAR(tp, unlockedNow, campRes){
         <div class="mapbox" id="rBox"><canvas id="rMap"></canvas><div class="maphint" id="rT">T+00:00</div></div>
         <div class="tl" id="rTl"></div>
         <div class="rctl"><button class="tbtn" type="button" id="rPlay">PLAY</button><input type="range" id="rPos" min="0" max="${S.snaps.length - 1}" value="0" aria-label="Replay position"><div class="seg" id="rSp"><button type="button" data-s="2">2×</button><button type="button" data-s="6" class="on">6×</button><button type="button" data-s="16">16×</button></div><button class="tbtn" type="button" id="rTruth">TRUTH</button></div>
+        <div class="go" style="margin-top:0"><button class="btn primary sm" type="button" id="rSeat">Take the seat from here</button><span class="eyebrow" style="letter-spacing:.04em">${B.camp ? 'Campaign battles are ironman: no rewinds.' : scn.tutorial ? 'Rewind is off in the drill tables.' : 'Scrub to any moment, then take the seat and fight on from that exact state.'}</span></div>
         <div class="eyebrow" style="letter-spacing:.06em">TRUTH shows every object, including threats your radar never saw.</div>
       </div>
       <div style="display:grid;gap:18px;align-content:start">
@@ -821,6 +906,8 @@ function openAAR(tp, unlockedNow, campRes){
           <tr><td>ROE violations · late ACKs · ID errors</td><td>${st.viol} · ${st.lateAck} · ${st.misId}</td></tr>
           <tr><td>Vetoes / hold-fire saves</td><td>${st.vetoes} / ${st.holdSaves}</td></tr>
         </table></div>
+        ${scn.tutorial ? '' : `<div class="find"><h3>Red commander</h3>${S.red.length ? `<ul class="redl">${S.red.map(t => `<li><b>${esc(t.name)}</b>${t.reactive ? (t.used ? ` · fired at T+${fmtT(t.at)}` : ' · never triggered') : ''}<span>${esc(t.why)}</span></li>`).join('')}</ul><p class="eyebrow" style="letter-spacing:.04em">Red updates its picture of you after every battle you finish.</p>` : '<p class="eyebrow">Scripted raid. The red commander is off in Settings.</p>'}</div>`}
+        ${scn.tutorial ? '' : '<div class="find" id="aGhost"><h3>Doctrinal ghost</h3><p class="eyebrow">Running a by-the-book crew on the same seed…</p></div>'}
       </div>
     </div>
     <div class="evl"><h3>Event log</h3><ol id="rEv">${S.ev.filter(x => !x.quiet).map(x => `<li data-t="${x.t}" class="${x.bad ? 'bad' : x.good ? 'good' : ''}"><span>${fmtT(x.t)}</span><span>${esc(x.text)}</span></li>`).join('')}</ol></div>
@@ -846,8 +933,27 @@ function openAAR(tp, unlockedNow, campRes){
   $('#rPlay').onclick = () => { RP.play = !RP.play; if (RP.play && RP.i >= S.snaps.length - 1) RP.i = 0; $('#rPlay').textContent = RP.play ? 'PAUSE' : 'PLAY'; RP.last = performance.now(); if (RP.play) requestAnimationFrame(replayLoop); };
   $('#rSp').onclick = ev => { const b = ev.target.closest('button'); if (!b) return; RP.sp = +b.dataset.s; $$('#rSp button').forEach(x => x.classList.toggle('on', x === b)); };
   $('#rTruth').onclick = () => { RP.truth = !RP.truth; $('#rTruth').classList.toggle('on', RP.truth); drawReplay(); };
+  const seat = $('#rSeat'); seat.disabled = !!B.camp || !!scn.tutorial;
+  seat.onclick = () => { const snap = S.snaps[RP.i]; if (!snap) return; RP.play = false; const n = Math.max(1, Math.round(snap.t / H.DT)); const ns = H.rewind(S.scn, S.opts, S.inputs, n); launchBattle(ns, {camp:null, brief:B.brief}); };
+  if (!scn.tutorial) setTimeout(() => runGhostAAR(), 80);
   $('#rEv').onclick = ev => { const li = ev.target.closest('li'); if (!li) return; RP.i = Math.max(0, S.snaps.findIndex(s => s.t >= +li.dataset.t) - 2); $('#rPos').value = RP.i; drawReplay(); $('#rBox').scrollIntoView({behavior:'smooth', block:'nearest'}); };
   requestAnimationFrame(drawReplay);
+}
+function runGhostAAR(){
+  const el = $('#aGhost'); if (!el || UI.screen !== 'aar') return;
+  const mine = S; let g;
+  try { g = H.runGhost(mine.scn, mine.opts); } catch (e) { el.innerHTML = '<h3>Doctrinal ghost</h3><p class="eyebrow">The ghost crew could not run this battle.</p>'; return; }
+  if (S !== mine) return;
+  const me = {}; for (const x of S.ev) if (x.k === 'ENG' && x.uid) me[x.uid] = {t:x.t, kind:x.kind};
+  const div = [];
+  for (const [uid, v] of Object.entries(me)) if (!(uid in g.engaged)) div.push({t:v.t, txt:`You engaged a ${(TYPES[v.kind] || {}).name ? TYPES[v.kind].name.toLowerCase() : 'track'} at T+${fmtT(v.t)}. The ghost held fire.`});
+  for (const [uid, t] of Object.entries(g.engaged)) if (!(uid in me)) div.push({t, txt:`The ghost engaged a ${(TYPES[g.kinds[uid]] || {}).name ? TYPES[g.kinds[uid]].name.toLowerCase() : 'track'} at T+${fmtT(t)}. You never did.`});
+  div.sort((a, b) => a.t - b.t);
+  const d = S.score.total - g.score.total, gs = g.st;
+  el.innerHTML = `<h3>Doctrinal ghost</h3><p><b>${g.score.total}</b> for a by-the-book crew on the same seed, against your <b>${S.score.total}</b>. ${d > 0 ? 'You beat doctrine.' : d === 0 ? 'You matched doctrine.' : 'Doctrine beat you by ' + (-d) + ' points.'}</p>
+    <table class="cmp"><tr><td></td><td>YOU</td><td>GHOST</td></tr><tr><td>Missiles fired</td><td>${S.st.fired.MSE + S.st.fired.GEMT}</td><td>${gs.fired.MSE + gs.fired.GEMT}</td></tr><tr><td>Kills</td><td>${S.st.kills}</td><td>${gs.kills}</td></tr><tr><td>Leakers</td><td>${S.st.leak}</td><td>${gs.leak}</td></tr><tr><td>Wasted shots</td><td>${S.st.wasted}</td><td>${gs.wasted}</td></tr><tr><td>Violations</td><td>${S.st.viol}</td><td>${gs.viol}</td></tr></table>
+    ${div.length ? `<b>Where you diverged</b><ul>${div.slice(0, 6).map(x => `<li>${esc(x.txt)}</li>`).join('')}</ul>` : '<p class="eyebrow">Every engagement matched the ghost.</p>'}
+    <p class="eyebrow" style="letter-spacing:.04em">The ghost flies semiautomatic, identifies from IFF, routes and altitude behaviour, goes silent when an ARM closes inside 45 km, and lets its TCA handle reloads and faults.</p>`;
 }
 function replayLoop(now){
   if (!RP || !RP.play || UI.screen !== 'aar') return;
@@ -906,6 +1012,7 @@ function campAfter(st, Sm){
   const sc = Sm.score.total, rem = H.remaining(Sm), c = CAMPAIGNS[st.th];
   const unused = {MSE:st.stock.MSE - Sm.loaded.MSE, GEMT:st.stock.GEMT - Sm.loaded.GEMT};
   st.scores.push(sc);
+  st.fatigue = st.fatigue || {}; for (const c of H.CREW){ const f = st.fatigue[c.id] || 0; st.fatigue[c.id] = Math.max(0, Math.min(.8, c.id === Sm.tca.id ? f + .14 : f - .1)); }
   st.xp = Math.min(5, st.xp + (sc >= 80 ? 1 : .5));
   st.trust = Math.max(0, Math.min(100, st.trust + (sc >= 85 ? 8 : sc >= 70 ? 3 : -6) - 5 * Sm.st.viol));
   let msg;
@@ -959,11 +1066,13 @@ function openSet(){
     ${row('Expert mode', 'ENGAGE fires on tap and confirmation prompts disappear, except ROE warnings.', seg('setExp', [[false,'OFF'], [true,'ON']], s.expert))}
     ${row('Equipment faults', 'How often the radar, launchers and power plant break during a battle.', seg('setDiff', [['off','OFF'], ['normal','NORMAL'], ['hard','HARD']], s.diff))}
     ${row('Default speed', 'Time compression at the start of each battle.', seg('setSpd', [[1,'1×'], [2,'2×']], s.speed))}
+    ${row('Red commander', `Adaptive: red studies your habits and plans each raid against them. ${(store.d.red && store.d.red.battles) ? 'Battles studied: ' + store.d.red.battles + '.' : 'No battles studied yet.'}`, seg('setRed', [['adaptive','ADAPTIVE'], ['scripted','SCRIPTED']], s.red || 'adaptive') + ' <button class="btn sm" type="button" id="setRedReset">Wipe red\'s file on you</button>')}
     ${row('Unlock everything', 'Open every table, the campaign and the legacy console without certifying.', seg('setUnl', [[false,'OFF'], [true,'ON']], s.unlockAll))}
     ${row('Reset progress', 'Clears passed tables, best scores and campaigns on this device.', '<button class="btn danger sm" type="button" id="setReset">Reset</button>')}`;
   const bind = (id, key, conv, after) => $('#' + id).querySelectorAll('button').forEach(b => b.onclick = () => { if (id === 'setSkin' && b.dataset.v === 'legacy' && !unlocked()) return; s[key] = conv(b.dataset.v); store.save(); $('#' + id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); after && after(); });
   bind('setSkin', 'skin', v => v, applySkin); bind('setVoice', 'voice', v => v === 'true', () => { if (!s.voice) VO.stop(); });
-  bind('setExp', 'expert', v => v === 'true'); bind('setDiff', 'diff', v => v); bind('setSpd', 'speed', v => +v); bind('setUnl', 'unlockAll', v => v === 'true', () => { applySkin(); openSet(); });
+  bind('setExp', 'expert', v => v === 'true'); bind('setRed', 'red', v => v);
+  $('#setRedReset').onclick = () => { store.d.red = {}; store.save(); openSet(); }; bind('setDiff', 'diff', v => v); bind('setSpd', 'speed', v => +v); bind('setUnl', 'unlockAll', v => v === 'true', () => { applySkin(); openSet(); });
   $('#setVol').oninput = ev => { s.vol = +ev.target.value; AU.vol(s.vol); store.save(); };
   $('#setReset').onclick = () => modal('Reset progress', '<p>This clears every passed table, best score and campaign on this device.</p>', [{t:'Cancel'}, {t:'Reset', cls:'danger', f:() => { store.d.p = {tables:{}, best:{}, cert:false, plays:0}; store.d.camp = {}; store.save(); applySkin(); openSet(); }}], true);
   $('#sBack').onclick = () => openMenu();

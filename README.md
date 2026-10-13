@@ -21,10 +21,12 @@ src/
   style.css    tokens and layout
   data.js      threat library, interceptors, maps, scenarios, campaigns
   sim.js       deterministic simulation core (no DOM; runs in Node)
+  training.js  drill table objectives and coach steps
   ui.js        rendering, audio, panels, tutorial, campaign, AAR
 tools/build.py inlines src/ into dist/index.html
 tests/sim.test.js runs every scenario headless
 tests/training.test.js plays each drill table with a correct and a sloppy crew
+tests/v2.test.js checks replay determinism, rewind, red commander and ghost
 public/        manifest, service worker, icon
 ```
 
@@ -46,6 +48,15 @@ npx serve dist                  # or any static server
 Saves live in the browser's localStorage. Cross-device saves and a leaderboard would need a small backend (Vercel KV or Supabase); the save format is versioned (`hostiletrack.v1`) for that.
 
 ## Changelog
+
+**2.0**
+- Adaptive red commander: each raid draws from five tactics (probe, gap strike, decoy tax, SEAD hunt, pressure salvo) and learns from your last battles (PTL habits, decoy spending, radiating, low stock). Settings switch it to scripted.
+- Take the seat: every action goes through a command log, so the AAR can rewind any battle to a chosen moment and hand you the console from there.
+- Doctrinal ghost: a by-the-book crew fights the same seed; the AAR compares scores and lists where you diverged.
+- Radar time budget: tracks cost search time, and a NARROW ±30° sector trades coverage for 25% more range.
+- Station pages: TRACK, TIMELINE (launch, flight, intercept against threat arrival), SYSTEM (BIT codes and fault isolation) and CREW (F1 to F4).
+- AI TCA at manstation 2: three operators with different skill, fatigue that carries through a campaign, and delegation of reloads and fault isolation.
+- Brief shows red intelligence and your crew roster.
 
 **1.1**
 - Training rebuilt: traffic now flies inside the sector, assets sit inside the low-altitude horizon, and Tables II to VIII use a fixed emplacement. Each table has a live objective checklist, coach steps that stop the clock while they explain, and an AAR that lists every objective with a fix for each failure.
