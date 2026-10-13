@@ -1,0 +1,9 @@
+{
+  "buildCommand": "python3 tools/build.py && cp public/* dist/",
+  "outputDirectory": "dist",
+  "installCommand": "echo no-install",
+  "framework": null,
+  "headers": [
+    { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+  ]
+}

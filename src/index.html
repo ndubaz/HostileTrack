@@ -1,0 +1,92 @@
+<title>Hostile Track</title>
+<meta name="description" content="Patriot AN/MSQ-132 Engagement Control Station simulator. Identify, decide, defend.">
+<meta name="theme-color" content="#080c0d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&family=VT323&display=swap">
+<style>/*@@CSS@@*/</style>
+
+<div id="app">
+  <section id="scr-title" class="screen title">
+    <canvas id="titleCanvas" aria-hidden="true"></canvas>
+    <div class="title-inner">
+      <div class="eyebrow">AN/MSQ-132 · Engagement Control Station · Patriot Config 3+</div>
+      <h1 class="wordmark">Hostile<br><span>Track</span></h1>
+      <p class="tagline">You are the Tactical Control Officer in a Patriot fire unit. Identify what is in the sky, decide what deserves a missile, and make the load last.</p>
+      <button id="btnEnter" class="btn primary big" type="button">Enter the shelter</button>
+      <p class="fine">Sound and voice play once you enter. Headphones help. Every performance figure is a labelled game value built from open sources; scenarios are inspired by public events from 2019 to 2025.</p>
+    </div>
+  </section>
+
+  <section id="scr-menu" class="screen menu" hidden>
+    <div class="menu-wrap">
+      <header class="menu-head">
+        <div class="wm">Hostile <span>Track</span></div>
+        <span id="certBadge" class="badge">NOT CERTIFIED</span>
+        <div class="grow"></div>
+        <button class="btn sm" type="button" data-go="lib">Library</button>
+        <button class="btn sm" type="button" data-go="set">Settings</button>
+      </header>
+      <nav class="mtabs" id="menuTabs">
+        <button type="button" data-tab="TRN">Training</button>
+        <button type="button" data-tab="ME">Middle East</button>
+        <button type="button" data-tab="EU">Europe</button>
+        <button type="button" data-tab="CAMP">Campaign</button>
+      </nav>
+      <div id="menuBody"></div>
+    </div>
+  </section>
+
+  <section id="scr-brief" class="screen brief" hidden><div id="briefBody"></div></section>
+
+  <section id="scr-battle" class="screen battle" hidden>
+    <header class="strip">
+      <div class="st-grp"><span class="st-lbl">ADW</span><b id="sADW" class="chip">WHITE</b></div>
+      <div class="st-grp"><span class="st-lbl">WCS</span><b id="sWCS" class="chip">TIGHT</b></div>
+      <div class="seg" id="sMode"><button type="button" data-m="MANUAL">MAN</button><button type="button" data-m="SEMI">SEMI</button><button type="button" data-m="AUTO" class="m-AUTO">AUTO</button></div>
+      <button id="sEmcon" class="tbtn" type="button" title="Emission control: radar silent">EMCON</button>
+      <button id="sPtl" class="tbtn" type="button">PTL 000</button>
+      <button id="sDisp" class="tbtn" type="button" hidden>DISPLACE</button>
+      <button id="sRadio" class="tbtn rbtn" type="button">RADIO</button>
+      <div class="st-grow"></div>
+      <div class="st-grp hide-s"><span class="st-lbl">HOS</span><b id="sHos">0</b><span class="st-lbl">UNK</span><b id="sUnk">0</b></div>
+      <div class="st-grp"><span class="st-lbl">MSE</span><b id="sMse">0</b><span class="st-lbl">GEM-T</span><b id="sGem">0</b></div>
+      <div class="st-clock"><b id="sClock">T+00:00</b><span id="sZulu">0000Z</span></div>
+      <div class="seg" id="sSpeed"><button type="button" data-s="0">II</button><button type="button" data-s="1">1×</button><button type="button" data-s="2">2×</button><button type="button" data-s="4">4×</button></div>
+      <button id="sEnd" class="tbtn" type="button">END</button>
+    </header>
+    <aside class="radio" id="pRadio">
+      <div class="ph"><span>RADIO · ORDERS</span><span><button id="btnAck" class="btn ack" type="button">ACK</button> <button class="tbtn sheet-x" type="button" data-close="1">×</button></span></div>
+      <ol id="log"></ol>
+    </aside>
+    <main class="scope-wrap" id="scopeWrap">
+      <canvas id="scope"></canvas>
+      <div class="scope-ctl"><button id="zIn" type="button" title="Zoom in">+</button><button id="zOut" type="button" title="Zoom out">−</button><button id="zCtr" type="button" title="Centre on battery">◎</button><button id="z3d" type="button" title="Tilt to 3D view">3D</button></div>
+      <div class="scope-info" id="scopeInfo"></div>
+      <div class="radar-state" id="radarState" hidden></div>
+      <div class="toast" id="toast" hidden></div>
+      <div class="coach" id="coach" hidden><div class="coach-k">COACH · <span id="coachStep"></span></div><p id="coachText"></p><button id="coachNext" class="btn sm" type="button">Next</button></div>
+    </main>
+    <aside class="side" id="pSide">
+      <div class="ph"><span>TRACK DATA</span><button class="tbtn sheet-x" type="button" data-close="1">×</button></div>
+      <div id="card" class="card"></div>
+      <div class="ph"><span>ENGAGEMENT QUEUE · THREAT ORDER</span></div>
+      <div id="queue" class="queue"></div>
+    </aside>
+    <footer class="lnch" id="pLnch"><div class="lnch-row" id="lnchRow"></div></footer>
+    <nav class="ptabs" id="ptabs"><button type="button" data-p="">SCOPE</button><button type="button" data-p="side">TRACK</button><button type="button" data-p="radio">RADIO</button><button type="button" data-p="lnch">LNCHR</button></nav>
+  </section>
+
+  <section id="scr-aar" class="screen aar" hidden><div id="aarBody" class="aar-wrap"></div></section>
+  <section id="scr-camp" class="screen page" hidden><div id="campBody" class="page-wrap"></div></section>
+  <section id="scr-lib" class="screen page" hidden><div id="libBody" class="page-wrap"></div></section>
+  <section id="scr-set" class="screen page" hidden><div id="setBody" class="page-wrap"></div></section>
+</div>
+
+<div id="modal" class="modal" hidden><div class="modal-card" id="mCard"><h3 id="mTitle"></h3><div id="mBody"></div><div id="mBtns" class="mbtns"></div></div></div>
+<div class="scanlines" aria-hidden="true"></div>
+
+<script>/*@@DATA@@*/</script>
+<script>/*@@SIM@@*/</script>
+<script>/*@@UI@@*/</script>

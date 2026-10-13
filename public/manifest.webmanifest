@@ -1,0 +1,11 @@
+{
+  "name": "Hostile Track",
+  "short_name": "Hostile Track",
+  "description": "Patriot AN/MSQ-132 Engagement Control Station simulator",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080c0d",
+  "theme_color": "#080c0d",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
