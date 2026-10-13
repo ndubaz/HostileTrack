@@ -49,6 +49,11 @@ Saves live in the browser's localStorage. Cross-device saves and a leaderboard w
 
 ## Changelog
 
+**2.1**
+- Real terrain: mountain ranges with peaks, saddles, branching spurs and gullies, escarpments with steep faces and long dip slopes, scattered jebels and hills, carved river valleys and coastal plains. Maps follow the real relief: Organ and San Andres ranges and the Sacramento escarpment, the Zagros fold belt, the Hejaz and Tuwaiq escarpments, the Dead Sea rift with the Lisan peninsula, the Carpathian arc, the Low Tatras and Poľana.
+- True line-of-sight masking: the radar traces each bearing across the height field (with earth curvature), and low fliers hug the ground, so a cruise missile hides in a valley and pops up over a crest. The 100 m limit line and Table I's Round Hill lesson come from the same terrain you see.
+- Scope relief: hillshade lit from the northwest, elevation tint, 100 m contours with 500 m index lines, half-kilometre detail that refines in the background, ground clutter only on terrain faces the radar can see, and a denser 3D mesh.
+
 **2.0**
 - Adaptive red commander: each raid draws from five tactics (probe, gap strike, decoy tax, SEAD hunt, pressure salvo) and learns from your last battles (PTL habits, decoy spending, radiating, low stock). Settings switch it to scripted.
 - Take the seat: every action goes through a command log, so the AAR can rewind any battle to a chosen moment and hand you the console from there.

@@ -31,22 +31,92 @@ function pip(poly, x, y){ let c = false; for (let i = 0, j = poly.length - 1; i 
 function hash2(i, j, s){ let h = (i * 374761393 + j * 668265263 + s * 982451653) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
 function vnoise(x, y, s){ const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy); const a = hash2(i, j, s), b = hash2(i + 1, j, s), c = hash2(i, j + 1, s), d = hash2(i + 1, j + 1, s); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
 function fbm(x, y, s){ let t = 0, a = .5, f = 1; for (let k = 0; k < 4; k++){ t += a * vnoise(x * f, y * f, s + k * 17); f *= 2; a *= .5; } return t; }
-function isLand(map, x, y){ let inP = false; for (const p of map.polys || []) if (pip(p, x, y)){ inP = true; break; } return map.landDefault ? !inP : inP; }
+const PBOX = new WeakMap();
+function polyBoxes(map){ let b = PBOX.get(map); if (!b){ b = (map.polys || []).map(p => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [x, y] of p){ x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return [x0, y0, x1, y1, p]; }); PBOX.set(map, b); } return b; }
+function isLand(map, x, y){ let inP = false; for (const [x0, y0, x1, y1, p] of polyBoxes(map)) if (x >= x0 && x <= x1 && y >= y0 && y <= y1 && pip(p, x, y)){ inP = true; break; } return map.landDefault ? !inP : inP; }
+// Terrain: a height field in km built from mountain ranges (multi-point spines with peaks, saddles,
+// spurs and escarpments), isolated peaks, scattered hill fields and carved river valleys.
+const vn2 = (x, y, s) => vnoise(x, y, s) * 2 - 1;
+function ridged(x, y, s){ let t = 0, a = .5, f = 1, w = 1; for (let k = 0; k < 4; k++){ let n = 1 - Math.abs(vn2(x * f, y * f, s + k * 31)); n *= n * w; w = clamp(n * 1.8, 0, 1); t += a * n; f *= 2.07; a *= .5; } return t / .9375; }
+function polyInfo(px, py, pts){
+  let best = 1e9, side = 1, acc = 0, along = 0;
+  for (let i = 0; i < pts.length - 1; i++){
+    const ax = pts[i][0], ay = pts[i][1], dx = pts[i + 1][0] - ax, dy = pts[i + 1][1] - ay, l2 = dx * dx + dy * dy, len = Math.sqrt(l2);
+    const t = l2 ? clamp(((px - ax) * dx + (py - ay) * dy) / l2, 0, 1) : 0, d = Math.hypot(px - ax - t * dx, py - ay - t * dy);
+    if (d < best){ best = d; side = (dx * (py - ay) - dy * (px - ax)) >= 0 ? 1 : -1; along = acc + t * len; }
+    acc += len;
+  }
+  return {d:best, side, u:acc ? along / acc : .5, len:acc};
+}
+const TSPEC = new WeakMap();
+function terrSpec(map){
+  let t = TSPEC.get(map); if (t) return t;
+  const r = rng32((map.seed || 7) * 7919 + 13), peaks = (map.peaks || []).map(p => p.slice());
+  for (const f of map.hills || []) for (let i = 0; i < f.n; i++) peaks.push([f.a[0] + (f.b[0] - f.a[0]) * r(), f.a[1] + (f.b[1] - f.a[1]) * r(), f.h * (.35 + .65 * r()), f.r * (.6 + .8 * r())]);
+  const pad = (map.warp ?? 10) + 1, ranges = (map.ranges || []).map(R => { const w = R.w || 8, e = w * 5.5 + pad; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [x, y] of R.p){ x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return {R, w, box:[x0 - e, y0 - e, x1 + e, y1 + e]}; });
+  t = {peaks, ranges, pad}; TSPEC.set(map, t); return t;
+}
+const blend = (a, b) => Math.max(a, b) + Math.min(a, b) * .22;
 function heightAt(map, x, y){
   if (!isLand(map, x, y)) return -1;
-  let h = fbm(x / (map.nscale || 45), y / (map.nscale || 45), map.seed || 7) * (map.namp || .3);
-  for (const r of map.ridges || []){ const d = distSeg(x, y, r.a[0], r.a[1], r.b[0], r.b[1]), w = r.w || 8; h = Math.max(h, r.h * Math.exp(-(d * d) / (w * w)) + h * .3); }
-  return h;
+  const s = map.seed || 7, T = terrSpec(map), ns = map.nscale || 45, wa = map.warp ?? 10;
+  const wx = x + wa * (.75 * vn2(x / 55, y / 55, s + 101) + .25 * vn2(x / 16, y / 16, s + 107)), wy = y + wa * (.75 * vn2(x / 55 + 9.1, y / 55 - 3.7, s + 103) + .25 * vn2(x / 16 - 5.3, y / 16 + 2.2, s + 109)); // bends spines and contours
+  let rn = -1; const RN = () => rn >= 0 ? rn : (rn = ridged(wx / 7, wy / 7, s + 13)); // crags, spurs and gullies
+  let h = (map.namp ?? .2) * (.62 * fbm(wx / (ns * 1.6), wy / (ns * 1.6), s) + .1 * ridged(wx / (ns * .6), wy / (ns * .6), s + 5)); // broad, gentle lowland relief
+  for (const {R, w, box} of T.ranges){
+    if (x < box[0] || x > box[2] || y < box[1] || y > box[3]) continue;
+    const I = polyInfo(wx, wy, R.p); if (I.d > w * 5.5) continue;
+    const wv = .6 + .85 * fbm(wx / (w * 5) + 11, wy / (w * 5), s + 41); // the range swells and narrows along its length
+    const sp = ridged(wx / (w * 1.5) + 3, wy / (w * 1.5) - 7, s + 57); // spurs branching off the crest, gullies between
+    let t = I.d / (w * wv) * (1 - .5 * sp); if (R.s) t *= I.side === R.s ? 2.4 : (R.dip ?? .7); // escarpment: steep face on side s, long dip slope behind
+    const m = .45 + .8 * fbm(wx / (w * 2.4) + 40, wy / (w * 2.4), s + 29); // peaks and saddles along the crest
+    const end = Math.min(1, I.u * I.len / (w * 1.6), (1 - I.u) * I.len / (w * 1.6)), r = RN();
+    const core = Math.exp(-t * t * (1.6 - r)) * (.68 + .5 * r), foot = Math.exp(-t * t * .45) * .2;
+    h = blend(h, R.h * m * (.35 + .65 * end) * (core + foot));
+  }
+  for (const [px, py, ph, pr] of T.peaks){
+    const dx = wx - px, dy = wy - py, d2 = (dx * dx + dy * dy) / (pr * pr); if (d2 > 9) continue;
+    const r = RN(); h = blend(h, ph * Math.exp(-d2 * (1.5 - .9 * r)) * (.72 + .42 * r));
+  }
+  for (const rv of map.rivers || []){ const d = distPoly(x, y, rv.pts); if (d < 12) h *= 1 - .6 * Math.exp(-(d * d) / 20); }
+  if ((map.polys || []).length){ let n = 0; for (const [ox, oy] of [[5, 0], [-5, 0], [0, 5], [0, -5]]) n += isLand(map, x + ox, y + oy) ? 1 : 0; if (n < 4) h *= .15 + .85 * (n / 4) ** 2; } // coastal plain
+  return Math.max(0, h);
 }
-function masked(map, sx, sy, x, y, z){
-  for (const r of map.ridges || []) if (z < r.h * .95 && segInter(sx, sy, x, y, r.a[0], r.a[1], r.b[0], r.b[1])) return true;
-  return false;
+// Line of sight from an emplaced radar: one ray per half degree, built on demand. th[i] holds the
+// steepest terrain elevation angle seen inside i km; a target is hidden while its own angle is lower.
+const RE = 8495, LOS = new WeakMap();
+function losSite(map, sx, sy){
+  let m = LOS.get(map); if (!m){ m = new Map(); LOS.set(map, m); }
+  const k = sx.toFixed(2) + ',' + sy.toFixed(2); let o = m.get(k); if (o) return o;
+  let g0 = 0; for (let a = 0; a < 8; a++){ const p = polar(a * 45, .8, {x:sx, y:sy}); g0 = Math.max(g0, heightAt(map, p.x, p.y)); }
+  o = {h0:Math.max(g0, heightAt(map, sx, sy), 0) + RADAR.h, x:sx, y:sy, rays:new Array(720)}; m.set(k, o); return o;
 }
-function lowAltReach(map, sx, sy, b, z){ // distance at which a target at alt z first disappears along bearing b
-  let r = Math.min(horizon(z), RADAR.rmax); const e = polar(b, RADAR.rmax, {x:sx, y:sy});
-  for (const rd of map.ridges || []){ if (z >= rd.h * .95) continue; const u = segParam(sx, sy, e.x, e.y, rd.a[0], rd.a[1], rd.b[0], rd.b[1]); if (u != null) r = Math.min(r, u * RADAR.rmax); }
-  return r;
+function losRay(map, o, bin){
+  let r = o.rays[bin]; if (r) return r;
+  const N = Math.ceil(RADAR.rmax) + 2, th = new Float32Array(N), g = new Float32Array(N), face = []; const b = bin / 2;
+  let mx = -1;
+  for (let i = 1; i < N; i++){
+    const p = polar(b, i, o), hg = Math.max(0, heightAt(map, p.x, p.y)), a = (hg - i * i / (2 * RE) - o.h0) / i;
+    g[i] = hg; th[i - 1] = i === 1 ? -1 : mx;
+    if (a > mx){ if (hg > .04 && i < 110) face.push(i); mx = a; }
+  }
+  th[N - 1] = mx;
+  return (o.rays[bin] = {th, g, face});
 }
+const altMsl = (z, g) => z + g * clamp(1 - z / 3, 0, 1); // low fliers hug the ground, high fliers hold altitude
+function losClear(map, sx, sy, x, y, z, g){
+  const dx = x - sx, dy = y - sy, r = Math.hypot(dx, dy); if (r < 1) return true;
+  const o = losSite(map, sx, sy), ray = losRay(map, o, Math.round(brgOf(dx, dy) * 2) % 720), i = Math.min(ray.th.length - 1, Math.floor(r));
+  const gg = g ?? Math.max(0, heightAt(map, x, y));
+  return (altMsl(z, gg) - r * r / (2 * RE) - o.h0) / r >= ray.th[i];
+}
+function masked(map, sx, sy, x, y, z){ return !losClear(map, sx, sy, x, y, z); }
+function lowAltReach(map, sx, sy, b, z){ // distance at which a target at height z first disappears along bearing b
+  const lim = Math.min(horizon(z), RADAR.rmax), o = losSite(map, sx, sy), ray = losRay(map, o, Math.round(((b % 360) + 360) % 360 * 2) % 720);
+  for (let i = 2; i < lim; i++) if ((altMsl(z, ray.g[i]) - i * i / (2 * RE) - o.h0) / i < ray.th[i]) return i;
+  return lim;
+}
+function terrainFaces(map, sx, sy, b){ const o = losSite(map, sx, sy); return losRay(map, o, Math.round(((b % 360) + 360) % 360 * 2) % 720).face; }
 
 function coverage(scn, site, ptl){
   const map = MAP[scn.map];
@@ -1190,7 +1260,7 @@ function findings(S){
   return {sustain:sus.slice(0, 3), improve:imp.slice(0, 4), rec};
 }
 
-return {createSim, step, DT, RADAR, WEAPONS, TYPES, MAP, brgOf, polar, angDiff, horizon, heightAt, isLand, lowAltReach, coverage, assess, solve, threatQueue, roeCheck, engage, activePlan, radarOn, rounds,
+return {createSim, step, DT, RADAR, WEAPONS, TYPES, MAP, brgOf, polar, angDiff, horizon, heightAt, isLand, lowAltReach, terrainFaces, coverage, assess, solve, threatQueue, roeCheck, engage, activePlan, radarOn, rounds,
   setMode, setEmcon, playerId, playerIff, holdFire, veto, ack, reload, reorient, displace, remaining, findings, score, onAirway, inCorridor, spoken, brgS, PRI_W,
   cmd, rewind, runGhost, learnRed, planRed, FAULTS, FIX_ACTIONS, CREW, setSector, tcaEff, circMean};
 })();

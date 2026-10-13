@@ -104,37 +104,72 @@ function pal(){
 }
 const idCol = (id, P) => id === 'HOS' ? P.red : (id === 'FRD' || id === 'ASF') ? P.cyan : id === 'NEU' ? P.green : P.amber;
 
-const terrCache = {}, gridCache = {};
-function terrainImg(mk){
-  const P = pal(), key = mk + (P.legacy ? 'L' : 'W'); if (terrCache[key]) return terrCache[key];
-  const map = MAP[mk], N = 400, c = document.createElement('canvas'); c.width = c.height = N;
-  const ctx = c.getContext('2d'), img = ctx.createImageData(N, N), hg = new Float32Array(N * N);
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) hg[j * N + i] = H.heightAt(map, -200 + i + .5, 200 - j - .5);
+const terrCache = {}, gridCache = {}, terrJobs = {};
+let terrVer = 0;
+// Shaded relief: heights sampled on an N×N grid over the 400 km map, lit from the northwest,
+// tinted by elevation, with 100 m contours and 500 m index contours. A 1 km pass paints at once;
+// a 0.5 km pass refines in the background and swaps in when done.
+function shadeTerrain(P, hg, N){
+  const px = 400 / N, c = document.createElement('canvas'); c.width = c.height = N;
+  const ctx = c.getContext('2d'), img = ctx.createImageData(N, N), d = img.data;
   const at = (i, j) => hg[Math.max(0, Math.min(N - 1, j)) * N + Math.max(0, Math.min(N - 1, i))];
-  // dark, desaturated tactical map: hillshade + contour lines every 200 m
-  const L0 = P.legacy ? [2, 14, 5] : [15, 20, 19], L1 = P.legacy ? [8, 40, 13] : [40, 44, 38], SEA = P.legacy ? [1, 6, 2] : [6, 13, 18], CO = P.legacy ? [40, 150, 55] : [92, 132, 138], CT = P.legacy ? [20, 80, 28] : [58, 70, 62];
+  const lg = P.legacy;
+  const LOW = lg ? [3, 15, 6] : [17, 22, 20], MID = lg ? [6, 30, 10] : [34, 37, 31], HIGH = lg ? [14, 58, 20] : [66, 66, 58];
+  const SEA = lg ? [1, 6, 2] : [7, 14, 19], SEA2 = lg ? [2, 10, 4] : [11, 22, 28], COAST = lg ? [40, 150, 55] : [86, 122, 128];
+  const CMIN = lg ? [24, 90, 34] : [70, 82, 72], CIDX = lg ? [50, 170, 70] : [120, 128, 108];
+  const az = 315 * Math.PI / 180, al = 38 * Math.PI / 180, Lx = Math.sin(az) * Math.cos(al), Ly = Math.cos(az) * Math.cos(al), Lz = Math.sin(al), EX = 3.2;
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){
     const h = at(i, j), o = (j * N + i) * 4;
     if (h < 0){
-      const coast = at(i + 1, j) >= 0 || at(i - 1, j) >= 0 || at(i, j + 1) >= 0 || at(i, j - 1) >= 0;
-      const col = coast ? CO : SEA, n = ((i * 7 + j * 13) % 5) * .4;
-      img.data[o] = col[0] + n; img.data[o + 1] = col[1] + n; img.data[o + 2] = col[2] + n; img.data[o + 3] = 255; continue;
+      let coast = false, near = 0;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (at(i + di, j + dj) >= 0) coast = true;
+      if (!coast) for (let k = 2; k <= 8; k += 3) if (at(i + k, j) >= 0 || at(i - k, j) >= 0 || at(i, j + k) >= 0 || at(i, j - k) >= 0){ near = 1 - k / 10; break; }
+      const col = coast ? COAST : SEA, n = ((i * 7 + j * 13) % 5) * .35;
+      for (let q = 0; q < 3; q++) d[o + q] = col[q] + (SEA2[q] - SEA[q]) * near * (coast ? 0 : 1) + n;
+      d[o + 3] = 255; continue;
     }
-    const dzx = at(i + 1, j) - at(i - 1, j), dzy = at(i, j - 1) - at(i, j + 1);
-    const l = Math.max(.45, Math.min(1.5, 1 + (-dzx + dzy) * 2.6));
-    const k = Math.min(1, h / 1.6);
-    const ci = .45, c0 = Math.floor(h / ci), contour = h > .2 && (c0 !== Math.floor(at(i + 1, j) / ci) || c0 !== Math.floor(at(i, j + 1) / ci));
-    const steep = Math.abs(dzx) + Math.abs(dzy) > .18;
-    for (let q = 0; q < 3; q++){ const base = Math.min(255, (L0[q] + (L1[q] - L0[q]) * k) * l); img.data[o + q] = contour && !steep ? base * .55 + CT[q] * .45 : base; }
-    img.data[o + 3] = 255;
+    const hx0 = Math.max(0, at(i - 1, j)), hx1 = Math.max(0, at(i + 1, j)), hy0 = Math.max(0, at(i, j + 1)), hy1 = Math.max(0, at(i, j - 1));
+    const gx = (hx1 - hx0) / (2 * px) * EX, gy = (hy1 - hy0) / (2 * px) * EX; // km per km, exaggerated
+    const nl = 1 / Math.sqrt(gx * gx + gy * gy + 1), sh = Math.max(0, (-gx * Lx - gy * Ly + Lz) * nl);
+    let l = .22 + .78 * sh / Lz; // flat ground = 1
+    const curv = (hx0 + hx1 + hy0 + hy1 - 4 * h) / (px * px); l *= 1 - Math.max(-.12, Math.min(.18, curv * 1.6)); // shadowed valleys, bright crests
+    const k = Math.min(1, h / 1.8), k1 = Math.min(1, k * 2), k2 = Math.max(0, k * 2 - 1);
+    const steep = Math.hypot(gx, gy) / EX;
+    const ci = Math.floor(h / .1), cr = Math.floor(Math.max(0, hx1) / .1), cd = Math.floor(Math.max(0, hy0) / .1);
+    const isC = h > .05 && (ci !== cr || ci !== cd), idx = isC && (Math.floor(h / .5) !== Math.floor(Math.max(0, hx1) / .5) || Math.floor(h / .5) !== Math.floor(Math.max(0, hy0) / .5));
+    for (let q = 0; q < 3; q++){
+      let base = (k2 > 0 ? MID[q] + (HIGH[q] - MID[q]) * k2 : LOW[q] + (MID[q] - LOW[q]) * k1) * l;
+      if (idx && steep < .6) base = base * .62 + CIDX[q] * .38; else if (isC && steep < .18) base = base * .82 + CMIN[q] * .18;
+      d[o + q] = Math.min(255, base);
+    }
+    d[o + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
-  return (terrCache[key] = c);
+  return c;
+}
+function terrainImg(mk){
+  const P = pal(), key = mk + (P.legacy ? 'L' : 'W'); if (terrCache[key]) return terrCache[key];
+  const map = MAP[mk], N = 400, hg = new Float32Array(N * N);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) hg[j * N + i] = H.heightAt(map, -200 + (i + .5) * 400 / N, 200 - (j + .5) * 400 / N);
+  terrCache[key] = shadeTerrain(P, hg, N);
+  refineTerrain(mk, key, P);
+  return terrCache[key];
+}
+function refineTerrain(mk, key, P){
+  if (terrJobs[key]) return; const map = MAP[mk], N = 800, hg = new Float32Array(N * N); let j = 0;
+  terrJobs[key] = true;
+  const tick = () => {
+    const t0 = performance.now();
+    while (j < N && performance.now() - t0 < 12){ for (let i = 0; i < N; i++) hg[j * N + i] = H.heightAt(map, -200 + (i + .5) * .5, 200 - (j + .5) * .5); j++; }
+    if (j < N) return setTimeout(tick, 0);
+    terrCache[key] = shadeTerrain(P, hg, N); terrVer++;
+  };
+  setTimeout(tick, 300);
 }
 function heightGrid(mk){
   if (gridCache[mk]) return gridCache[mk];
   const map = MAP[mk], g = [];
-  for (let j = 0; j <= 80; j++){ const row = []; for (let i = 0; i <= 80; i++) row.push(H.heightAt(map, -200 + i * 5, 200 - j * 5)); g.push(row); }
+  for (let j = 0; j <= 160; j++){ const row = []; for (let i = 0; i <= 160; i++) row.push(H.heightAt(map, -200 + i * 2.5, 200 - j * 2.5)); g.push(row); }
   return (gridCache[mk] = g);
 }
 
@@ -166,9 +201,11 @@ function drawBase(ctx, v, M){
     ctx.imageSmoothingEnabled = true; ctx.globalAlpha = .9; ctx.drawImage(img, a[0], a[1], 400 * v.s, 400 * v.s); ctx.globalAlpha = 1;
   } else {
     ctx.fillStyle = P.bg; ctx.fillRect(0, 0, v.W, v.H);
-    const g = heightGrid(M.mapKey); ctx.lineWidth = 1; ctx.strokeStyle = P.grid;
-    for (let j = 0; j <= 80; j++){ ctx.beginPath(); let st = false; for (let i = 0; i <= 80; i++){ const h = g[j][i], q = proj(v, -200 + i * 5, 200 - j * 5, Math.max(0, h) * 1.2); if (q[1] < -50 || q[1] > v.H + 50){ st = false; continue; } st ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); st = true; } ctx.stroke(); }
-    for (let i = 0; i <= 80; i += 2){ ctx.beginPath(); let st = false; for (let j = 0; j <= 80; j++){ const h = g[j][i], q = proj(v, -200 + i * 5, 200 - j * 5, Math.max(0, h) * 1.2); if (q[1] < -50 || q[1] > v.H + 50){ st = false; continue; } st ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); st = true; } ctx.stroke(); }
+    const g = heightGrid(M.mapKey), G = g.length - 1; ctx.lineWidth = 1;
+    const seg = (pts) => { let st = false, hm = 0; ctx.beginPath(); for (const [x, y, h] of pts){ const q = proj(v, x, y, Math.max(0, h) * 1.6); if (q[1] < -50 || q[1] > v.H + 50){ st = false; continue; } st ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); st = true; hm = Math.max(hm, h); } return hm; };
+    for (let j = 0; j <= G; j++){ const pts = []; for (let i = 0; i <= G; i++) pts.push([-200 + i * 2.5, 200 - j * 2.5, g[j][i]]); const hm = seg(pts); ctx.strokeStyle = P.grid; ctx.globalAlpha = .55 + Math.min(.45, hm * .3); ctx.stroke(); }
+    for (let i = 0; i <= G; i += 2){ const pts = []; for (let j = 0; j <= G; j++) pts.push([-200 + i * 2.5, 200 - j * 2.5, g[j][i]]); seg(pts); ctx.strokeStyle = P.grid; ctx.globalAlpha = .35; ctx.stroke(); }
+    ctx.globalAlpha = 1;
     ctx.strokeStyle = P.dim; ctx.globalAlpha = .7; for (const poly of map.polys || []){ polyline(ctx, v, poly.concat([poly[0]])); ctx.stroke(); } ctx.globalAlpha = 1;
   }
   ctx.font = `10px ${P.mono}`; ctx.textAlign = 'left';
@@ -246,7 +283,7 @@ function drawLive(ctx, v, M, now, glow){
     if (M.clutter && !v.tilt){ // raw video: returns near the radar and on ridges, painted by the beam and decaying
       const C = M.clutter;
       for (let k = 0; k < 3; k++){ const r = Math.random() ** 2 * 24 + 1, p = H.polar(sw + (Math.random() - .5) * 4, r, B); C.push({x:p.x, y:p.y, t0:now}); }
-      for (const rd of MAP[M.mapKey].ridges || []){ const t = Math.random(), x = rd.a[0] + (rd.b[0] - rd.a[0]) * t, y = rd.a[1] + (rd.b[1] - rd.a[1]) * t; const b = H.brgOf(x - B.x, y - B.y), d = Math.hypot(x - B.x, y - B.y); if (d < 100 && Math.abs(H.angDiff(b, sw)) < 3 && Math.abs(H.angDiff(b, ptl)) <= half) C.push({x:x + (Math.random() - .5) * 2, y:y + (Math.random() - .5) * 2, t0:now}); }
+      if (Math.abs(H.angDiff(sw, ptl)) <= half) for (let k = 0; k < 6; k++){ const b = sw + (Math.random() - .5) * 3, f = H.terrainFaces(MAP[M.mapKey], B.x, B.y, b); if (!f.length) continue; const r = f[Math.floor(Math.random() * f.length)] + Math.random() - .5, p = H.polar(b, r, B); C.push({x:p.x, y:p.y, t0:now}); } // ground returns where the beam strikes terrain it can see
       while (C.length && now - C[0].t0 > 1800) C.shift();
       for (const c of C){ const s = proj(v, c.x, c.y); ctx.fillStyle = `rgba(${sc},${(.5 * (1 - (now - c.t0) / 1800)).toFixed(3)})`; ctx.fillRect(s[0] - .8, s[1] - .8, 1.8, 1.8); }
     }
@@ -484,7 +521,7 @@ function loop(now){
   if (!B.baseCv){ B.baseCv = document.createElement('canvas'); B.clutter = []; }
   if (B.baseCv.width !== cv.width || B.baseCv.height !== cv.height){ B.baseCv.width = cv.width; B.baseCv.height = cv.height; B.baseKey = ''; }
   const v = B.view, P = pal();
-  const key = [v.cx.toFixed(2), v.cy.toFixed(2), v.s.toFixed(3), v.tilt, cv.width, cv.height, M.bat.ptl, M.bat.half, M.bat.x, M.bat.y, M.bat.on, M.bat.alive, S.assets.map(a => a.hp).join(), S.launchers.map(L => L.dead ? 1 : 0).join(''), S.neighbors.map(n => n.on ? 1 : 0).join(''), B.scars.length, P.legacy].join('|');
+  const key = [terrVer, v.cx.toFixed(2), v.cy.toFixed(2), v.s.toFixed(3), v.tilt, cv.width, cv.height, M.bat.ptl, M.bat.half, M.bat.x, M.bat.y, M.bat.on, M.bat.alive, S.assets.map(a => a.hp).join(), S.launchers.map(L => L.dead ? 1 : 0).join(''), S.neighbors.map(n => n.on ? 1 : 0).join(''), B.scars.length, P.legacy].join('|');
   if (key !== B.baseKey){ B.baseKey = key; const bctx = B.baseCv.getContext('2d'); bctx.setTransform(dpr, 0, 0, dpr, 0, 0); drawBase(bctx, v, M); }
   M.clutter = B.clutter;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(B.baseCv, 0, 0);
