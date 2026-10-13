@@ -361,6 +361,7 @@ const SCN = [
   orders:[{t:6,k:'MSG',text:'Bravo, Anvil. Alpha holds the north. You hold zero five zero.'},{t:305,k:'MSG',text:'Bravo, Anvil. Alpha is down hard, power plant failure. You own the northern sector. Reorient as required.'}]},
 
  {id:'me7', theater:'ME', name:'Saturation', place:'Nevatim Air Base, Israel', map:'NEV', td:'GIDEON', bty:'BATTERY 3',
+  real:'In April 2024 Israel and its partners reported intercepting nearly every one of more than 300 drones and missiles; 9 ballistic missiles got through.',
   inspired:'Inspired by the April 2024 Iranian drone and missile attack',
   short:'Drones, then cruise missiles, then a ballistic wave. You will run out.',
   brief:['A massed attack is inbound: drones launched hours ago, cruise missiles behind them, and a wave of medium-range ballistic missiles timed to arrive together.','Friendly fighters will kill many drones over Jordan. Save your PAC-3 for the ballistic wave.','You carry 30 PAC-3 MSE and 10 GEM-T. No reloads tonight.'],
@@ -374,6 +375,7 @@ const SCN = [
   orders:[{t:6,k:'MSG',text:'Battery 3, Gideon. Weapons Free. Friendly air engaging drones east of the Jordan. Conserve PAC-3 for the ballistic wave.'},{t:255,k:'HOLDFIRE',tag:'sufa',text:'Battery 3, Gideon. Sufa flight recovering, number two has no Mode 4. Hold fire.'},{t:395,k:'MSG',text:'All stations, Gideon. Massive ballistic launch, threat axis zero seven five. Arrival in four minutes.'}]},
 
  {id:'me9', theater:'ME', name:'Twelve Days', place:'Nevatim and the Negev, Israel', map:'NEV', td:'GIDEON', bty:'BATTERY 3',
+  real:'Real defenders intercepted about 86% of the 525 ballistic missiles fired at Israel; 50 to 60 struck populated or military areas.',
   inspired:'Inspired by the June 2025 Iran-Israel war',
   short:'Night after night of medium-range missiles. A THAAD battery above you, a few cluster warheads, too few interceptors.',
   brief:['Iran is firing medium-range missiles in waves every night. Most come in salvos of ten to twenty. A US THAAD battery covers the Negev from the upper tier.','Some missiles now carry cluster warheads that open high. Others shed booster bodies that fall short and look just like warheads on radar.','In this war defenders stopped about 86% of ballistic missiles. Perfect play still loses some. Spend interceptors on what threatens the defended area.'],
@@ -388,6 +390,7 @@ const SCN = [
   orders:[{t:6,k:'MSG',text:'Battery 3, Gideon. Weapons Free. THAAD has the upper tier. Do not double-shoot what THAAD is working unless it falls through.'},{t:440,k:'MSG',text:'All stations, Gideon. Intelligence reports cluster warheads in this wave. Kill them high.'}]},
 
  {id:'me10', theater:'ME', name:'Ruwais Night', place:'Al Ruwais, United Arab Emirates', map:'RUW', td:'FALCON', bty:'ECHO 4-5',
+  real:'In the first days the UAE reported 172 of 186 ballistic missiles intercepted; 13 fell into the sea and one reached land.',
   inspired:'Inspired by the first night of the 2026 Iran war',
   short:'Day one. Hundreds of missiles across the Gulf. Some of them are aimed at your TPY-2.',
   brief:['War with Iran began hours ago. Iran is answering with everything it has across the Gulf. Your Patriot battery and a THAAD battery cover the Ruwais refinery, the Barakah nuclear plant and the THAAD radar itself.','Iran knows where the AN/TPY-2 is. Expect ballistic missiles and loitering munitions aimed at it. Lose it and the upper tier goes blind.','Counter-drone guns cover the refinery and a Coyote launcher covers the town. Let them take Shaheds; save Patriot for missiles.'],
@@ -404,6 +407,7 @@ const SCN = [
   orders:[{t:6,k:'MSG',text:'Echo, Falcon. Weapons Free. TPY-2 is priority one tonight. Guns and Coyote take the drones.'},{t:425,k:'HOLDFIRE',tag:'viper',text:'Echo, Falcon. Viper flight RTB to Dhafra, lead has a dead Mode 4. Hold fire.'}]},
 
  {id:'me11', theater:'ME', name:'Azraq', place:'Muwaffaq Salti Air Base, Jordan', map:'JOR', td:'SENTRY', bty:'BRAVO 1-43',
+  real:'Imagery suggests the AN/TPY-2 near Muwaffaq Salti was hit early in the war. Radar losses cut warning time across the region.',
   inspired:'Inspired by the March 2026 strikes on the THAAD radar in Jordan',
   short:'The TPY-2 was set up days ago and Iran has already found it. Keep it alive, or fight the rest of the night without it.',
   brief:['A THAAD battery arrived at Muwaffaq Salti days ago. Imagery suggests Iran already has its position.','Your Patriot is the only lower tier here. The first salvo will come for the TPY-2. If it dies, you fight ballistic missiles on your own radar alone.','Militia drones from Iraq cross the eastern desert at night.'],
@@ -420,6 +424,7 @@ const SCN = [
   faults:[{t:300,k:'COMMS'},{t:540,k:'DISP'}]},
 
  {id:'me12', theater:'ME', name:'Udeid, Again', place:'Al Udeid Air Base, Qatar', map:'QAT', td:'ANVIL', bty:'BRAVO 2-43',
+  real:'Qatar reported 98 of 101 ballistic missiles intercepted in the first days. One missile struck Al Udeid on March 4.',
   inspired:'Inspired by the 2026 Iranian strikes on Al Udeid',
   short:'No upper tier. Drones by the dozen, missiles in pairs, and the early-warning radar is a target.',
   brief:['This time there is no warning call from Tehran. Iran has already hit the early-warning radar once. If it goes, space-based warning reaches you later.','Qatar has spent a large share of its Patriot stock. You will not get reloads tonight beyond what is in the reserve.','Coyote launchers cover the CAOC. Use them on drones.'],
@@ -435,6 +440,7 @@ const SCN = [
   orders:[{t:6,k:'MSG',text:'Bravo, Anvil. Weapons Free. Coyote takes the drones. Keep PAC-3 for missiles.'}]},
 
  {id:'me13', theater:'ME', name:'Dimona and Arad', place:'Negev, Israel', map:'NEV', td:'GIDEON', bty:'BATTERY 3',
+  real:'From March 13 to 22, about 27% of ballistic missiles fired at Israel hit populated areas, up from about 3% in the first two weeks.',
   inspired:'Inspired by the March 2026 missile strikes on Dimona and Arad',
   short:'Three weeks into the war. Half the missiles are clusters, and the upper tier is almost out of rounds.',
   brief:['Long-range interceptor stocks are critically low. The THAAD battery has a handful of rounds left and no reloads.','More than half of tonight\u2019s missiles carry cluster warheads. They open high and scatter bomblets over towns. Kill them before they open, or not at all.','You may sit at either console. Swap seats from the SYSTEM page.'],

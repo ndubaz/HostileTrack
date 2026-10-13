@@ -4,7 +4,7 @@ A Patriot AN/MSQ-132 Engagement Control Station simulator. You sit as the Tactic
 
 ## What is in v1
 
-- **8 crew drill tables** at McGregor Range, with a coach overlay. Table VIII certifies the crew and unlocks the campaign and the legacy console.
+- **10 crew drill tables** at McGregor Range, with a coach overlay. Table VIII certifies the crew and unlocks the campaign and the legacy console.
 - **16 scenarios**: 8 Middle East (Al Udeid, Abqaiq, Erbil, Bahrain, Jeddah, PSAB, Nevatim, seeded endgame) and 8 Europe (Rzeszów, Kyiv, Burshtyn, Mihail Kogălniceanu, Šiauliai, Dnipro, Sliač, seeded endgame), each inspired by public events from 2019 to 2025.
 - **Two 7-battle campaigns** with persistent missile stock, resupply, crew experience, TD trust and ironman fratricide rules.
 - **Simulation**: 120° MPQ-65-style sector, radar horizon, ridge masking, jamming strobes and false tracks, IFF Mode 4 / Mode 3/C, manual / semiautomatic / automatic engagement with a veto window, ADW and WCS, TD orders with acknowledgment, ripple and shoot-look-shoot doctrine, GEM-T and PAC-3 MSE envelopes, M903 load-outs and reloads, EMCON against ARMs, PTL reorientation, displacement against recon-cued strikes, adjacent and allied batteries passing remote tracks, equipment faults.
@@ -27,6 +27,7 @@ tools/build.py inlines src/ into dist/index.html
 tests/sim.test.js runs every scenario headless
 tests/training.test.js plays each drill table with a correct and a sloppy crew
 tests/v2.test.js checks replay determinism, rewind, red commander and ghost
+tests/calib.test.js holds a competent crew inside real 2025-26 leak bands
 public/        manifest, service worker, icon
 ```
 
@@ -36,6 +37,7 @@ public/        manifest, service worker, icon
 python3 tools/build.py          # writes dist/index.html
 node tests/sim.test.js          # headless run of all 24 scenarios
 node tests/training.test.js     # every table: correct crew passes, sloppy crew fails
+node tests/calib.test.js        # leak rates against the 2025-26 record
 npx serve dist                  # or any static server
 ```
 
@@ -48,6 +50,15 @@ npx serve dist                  # or any static server
 Saves live in the browser's localStorage. Cross-device saves and a leaderboard would need a small backend (Vercel KV or Supabase); the save format is versioned (`hostiletrack.v1`) for that.
 
 ## Changelog
+
+**3.0**
+- Honest failure, calibrated to the record. Interceptors misfire (2%) and fail in flight (3%); a hit can leave the warhead falling (kill assessment UNCERTAIN). Liquid-fuel missiles shed booster bodies that track like warheads and fall short. Cluster warheads open 12 to 20 km up and scatter bomblets over an area; maneuvering warheads jink in the last third of flight. Fire units guide a limited number of missiles at once (8 Patriot, 6 THAAD), so salvos saturate. `tests/calib.test.js` holds a competent crew inside the real leak bands: UAE first night 0-10%, Qatar 2-20%, Israel June 2025 5-25%, Israel mid-March 2026 8-35%.
+- THAAD module. An AN/TPY-2 radar and THAAD launchers on their own site. Sit at THAAD fire control or the Patriot ECS and swap with G; the seat you leave runs on an AI crew. Layer doctrine (wait for THAAD, or concurrent), THAAD doctrine, TPY-2 emission control, and threats aimed at the TPY-2. Tables IX (shoot-look-shoot) and X (layered defense and clusters).
+- Counter-drone layer: guns and Coyote launchers with their own cost, auto or on call (U). Drone doctrine LEAVE TO C-UAS keeps Patriot for missiles. A cost ledger compares what you spent with what you killed.
+- Space-based launch warning: impact areas with time to impact appear before your radar sees the missile, and arrive later once the early-warning radar is lost.
+- Degraded operations: MOPP 4 (mask view, slower reactions), tactical radio loss (TD net down, autonomous operations), a frozen tabular display, red emergency lighting on power loss, shake and dust from near misses.
+- Five new battles and a campaign: Twelve Days (Israel 2025), Ruwais Night (UAE), Azraq (Jordan), Udeid, Again (Qatar), Dimona and Arad (Israel 2026), and the four-day campaign Shield Under Strain with one national interceptor pool, almost no resupply, partner stocks running dry and a theater map. New maps: Al Ruwais and Azraq. Each historical battle shows the real outcome in the brief and the AAR.
+- Station: system lamps, seat badge, a switch panel with a guarded ENGAGE key and push-to-talk, an A-scope and an elevation strip for the hooked track (terrain, horizon, cluster release band, THAAD floor, predicted trajectory, interceptors), flyout lines to predicted intercept points, cluster and bloom effects, raw, synthetic or blended video (R), filled symbols in the style of MIL-STD-2525, and an LCD pixel grid on the modern console.
 
 **2.1**
 - Real terrain: mountain ranges with peaks, saddles, branching spurs and gullies, escarpments with steep faces and long dip slopes, scattered jebels and hills, carved river valleys and coastal plains. Maps follow the real relief: Organ and San Andres ranges and the Sacramento escarpment, the Zagros fold belt, the Hejaz and Tuwaiq escarpments, the Dead Sea rift with the Lisan peninsula, the Carpathian arc, the Low Tatras and Poľana.

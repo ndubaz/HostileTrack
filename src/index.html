@@ -12,7 +12,7 @@
   <section id="scr-title" class="screen title">
     <canvas id="titleCanvas" aria-hidden="true"></canvas>
     <div class="title-inner">
-      <div class="eyebrow">Version 2.0 · AN/MSQ-132 · Engagement Control Station · Patriot Config 3+</div>
+      <div class="eyebrow">Version 3.0 · AN/MSQ-132 · Engagement Control Station · Patriot Config 3+</div>
       <h1 class="wordmark">Hostile<br><span>Track</span></h1>
       <p class="tagline">You are the Tactical Control Officer in a Patriot fire unit. Identify what is in the sky, decide what deserves a missile, and make the load last.</p>
       <button id="btnEnter" class="btn primary big" type="button">Enter the shelter</button>
@@ -50,10 +50,12 @@
       <button id="sPtl" class="tbtn" type="button">PTL 000</button>
       <button id="sDisp" class="tbtn" type="button" hidden>DISPLACE</button>
       <button id="sRadio" class="tbtn rbtn" type="button">RADIO</button>
+      <b id="sSeat" class="seat" hidden>PATRIOT ECS</b>
       <div class="st-grow"></div>
-      <div class="st-grp hide-s" title="Radar time: search share and tracks held"><span class="st-lbl">RADAR</span><span class="rtg"><i id="sRtg"></i></span><b id="sRt">100%</b></div>
-      <div class="st-grp hide-s"><span class="st-lbl">HOS</span><b id="sHos">0</b><span class="st-lbl">UNK</span><b id="sUnk">0</b></div>
-      <div class="st-grp"><span class="st-lbl">MSE</span><b id="sMse">0</b><span class="st-lbl">GEM-T</span><b id="sGem">0</b></div>
+      <div class="st-grp hide-s" title="System lamps"><span class="st-lbl">SYS</span><div class="lamps sys" id="sSys"><i data-k="RAD">RAD</i><i data-k="TPY" hidden>TPY</i><i data-k="COM">COM</i><i data-k="PWR">PWR</i><i data-k="MOPP">MOPP</i></div></div>
+      <div class="st-grp hide-s hide-m" title="Radar time: search share and tracks held"><span class="st-lbl">RADAR</span><span class="rtg"><i id="sRtg"></i></span><b id="sRt">100%</b></div>
+      <div class="st-grp hide-s hide-m"><span class="st-lbl">HOS</span><b id="sHos">0</b><span class="st-lbl">UNK</span><b id="sUnk">0</b></div>
+      <div class="st-grp"><span class="st-lbl">MSE</span><b id="sMse">0</b><span class="st-lbl">GEM-T</span><b id="sGem">0</b><span class="st-lbl" id="sThL" hidden>THAAD</span><b id="sTh" hidden>0</b></div>
       <div class="st-clock"><b id="sClock">T+00:00</b><span id="sZulu">0000Z</span></div>
       <div class="seg" id="sSpeed"><button type="button" data-s="0">II</button><button type="button" data-s="1">1×</button><button type="button" data-s="2">2×</button><button type="button" data-s="4">4×</button></div>
       <button id="sEnd" class="tbtn" type="button">END</button>
@@ -64,10 +66,12 @@
     </aside>
     <main class="scope-wrap" id="scopeWrap"><div class="crt">
       <canvas id="scope"></canvas><div class="glass" aria-hidden="true"></div>
-      <div class="scope-ctl"><button id="zIn" type="button" title="Zoom in">+</button><button id="zOut" type="button" title="Zoom out">−</button><button id="zCtr" type="button" title="Centre on battery">◎</button><button id="z3d" type="button" title="Tilt to 3D view">3D</button></div>
+      <div class="scope-ctl"><button id="zIn" type="button" title="Zoom in">+</button><button id="zOut" type="button" title="Zoom out">−</button><button id="zCtr" type="button" title="Centre on battery">◎</button><button id="z3d" type="button" title="Tilt to 3D view">3D</button><button id="zVid" type="button" title="Video: blended, synthetic or raw">MIX</button></div>
       <div class="scope-info" id="scopeInfo"></div>
       <div class="radar-state" id="radarState" hidden></div>
       <div class="toast" id="toast" hidden></div>
+      <div class="mopp" id="moppFx" hidden aria-hidden="true"></div><div class="dust" id="dustFx" aria-hidden="true"></div>
+      <div class="netdown" id="netDown" hidden>TD NET DOWN · AUTONOMOUS OPERATIONS</div>
       <div class="coach" id="coach" hidden><div class="coach-k"><span><span id="coachTitle">TABLE</span> · <span id="coachStep"></span></span><button id="coachMin" class="tbtn" type="button" aria-label="Collapse coach">–</button></div><p id="coachText"></p><button id="coachNext" class="btn sm primary" type="button">Continue</button><ul class="objs" id="coachObj"></ul></div>
     </div><div class="plate" aria-hidden="true">AN/MSQ-132 · MAN STATION 1 · SITUATION DISPLAY</div></main>
     <aside class="side" id="pSide">
@@ -75,14 +79,22 @@
       <div class="pg" data-page="trk">
         <div class="ph"><span>TRACK DATA</span></div>
         <div id="card" class="card"></div>
+        <div class="ph"><span>A-SCOPE · ELEVATION · HOOKED TRACK</span></div>
+        <div class="dx"><canvas id="aScope" aria-label="A-scope"></canvas><canvas id="elev" aria-label="Elevation strip"></canvas></div>
         <div class="ph"><span>ENGAGEMENT QUEUE · THREAT ORDER</span></div>
         <div id="queue" class="queue"></div>
       </div>
+      <div class="frozen" id="dispFz" hidden><b>BIT 7 · TABULAR DISPLAY FROZEN</b><span>Track, queue and timeline pages stopped updating. Open SYSTEM (F3) and run the fix, or wait for the TCA.</span></div>
       <div class="pg" data-page="tl" hidden><div class="ph"><span>ENGAGEMENT TIMELINE · NEXT 90 S</span></div><div id="tlPage" class="pgbody"></div></div>
       <div class="pg" data-page="sys" hidden><div class="ph"><span>SYSTEM STATUS · BIT</span></div><div id="sysPage" class="pgbody"></div></div>
       <div class="pg" data-page="crew" hidden><div class="ph"><span>CREW · MANSTATION 2</span></div><div id="crewPage" class="pgbody"></div></div>
     </aside>
-    <footer class="lnch" id="pLnch"><div class="lnch-row" id="lnchRow"></div></footer>
+    <footer class="lnch" id="pLnch"><div class="swp" id="swPanel" aria-label="Switch panel">
+      <div class="guardwrap"><button type="button" class="guard" id="swGuard" title="Lift the guard, then press ENGAGE">GUARD</button><button type="button" class="swk eng" id="swEng" disabled>ENGAGE</button></div>
+      <button type="button" class="swk" id="swHold" title="Hold fire on the hooked track (H)">HOLD</button>
+      <button type="button" class="swk" id="swCuas" title="Assign counter-drone fire to the hooked drone (U)">C-UAS</button>
+      <button type="button" class="swk ptt" id="swPtt" title="Push to talk: acknowledge the TD (Space)">PTT · ACK</button>
+    </div><div class="lnch-row" id="lnchRow"></div></footer>
     <nav class="ptabs" id="ptabs"><button type="button" data-p="">SCOPE</button><button type="button" data-p="side">TRACK</button><button type="button" data-p="radio">RADIO</button><button type="button" data-p="lnch">LNCHR</button></nav>
   </section>
 

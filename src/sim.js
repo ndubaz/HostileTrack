@@ -1201,7 +1201,7 @@ function clusterImpact(S, e, ix, iy){
 }
 function bodyKill(S, e, m){ // the interceptor hit the missile body; the warhead keeps falling, off its aimpoint
   m.res = 'KILL?'; S.st.uncertain++;
-  S.out.push({k:'kill', x:e.x, y:e.y, z:e.z, own:true});
+  S.out.push({k:'ka', x:e.x, y:e.y, z:e.z});
   const off = polar(S.rng() * 360, .8 + S.rng() * 2.6), I = {x:(e.model === 'fall' ? e.I.x : e.I.x) + off.x, y:e.I.y + off.y};
   const tr = Math.max(4, e.z / Math.max(.4, -(e.vz || -1.5)));
   e.model = 'fall'; e.I = I; e.t0 = S.t; e.T0 = tr; e.vx = (I.x - e.x) / tr; e.vy = (I.y - e.y) / tr; e.vz = -e.z / tr; e.dmg = Math.max(1, Math.round(e.dmg * .6)); e.bodyHit = true;
@@ -1499,6 +1499,6 @@ function findings(S){
 
 return {createSim, step, DT, RADAR, WEAPONS, TYPES, MAP, brgOf, polar, angDiff, horizon, heightAt, isLand, lowAltReach, terrainFaces, coverage, assess, solve, threatQueue, roeCheck, engage, activePlan, radarOn, rounds,
   setMode, setEmcon, playerId, playerIff, holdFire, veto, ack, reload, reorient, displace, remaining, findings, score, onAirway, inCorridor, spoken, brgS, PRI_W,
-  CHAN, cmd, rewind, runGhost, learnRed, planRed, FAULTS, FIX_ACTIONS, CREW, setSector, tcaEff, circMean, thaadOn, lsTotal, REL, activePlanTier:activePlan};
+  CHAN, cmd, rewind, runGhost, learnRed, planRed, FAULTS, FIX_ACTIONS, CREW, setSector, tcaEff, circMean, thaadOn, lsTotal, REL, predict, tpyDetects};
 })();
 if (typeof module !== 'undefined') module.exports = HT_SIM;
