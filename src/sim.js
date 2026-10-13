@@ -455,6 +455,7 @@ function dropTrack(S, e){ e.trk = null; }
 function tpyDetects(S, e){
   const T = S.thaad; if (!e.T.ballistic || e.z < .8) return false;
   const dx = e.x - T.x, dy = e.y - T.y, r = Math.hypot(dx, dy);
+  if (e.z < r * r / (2 * RE)) return false; // below the radar horizon: still too low and too far to see
   return r <= T.rmax * Math.pow(e.T.rcs / .45, .25) && Math.abs(angDiff(brgOf(dx, dy), T.ptl)) <= T.half;
 }
 function updateTracks(S, dt){

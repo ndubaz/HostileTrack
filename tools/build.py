@@ -5,7 +5,7 @@ import pathlib
 root = pathlib.Path(__file__).resolve().parent.parent
 src = root / 'src'
 html = (src / 'index.html').read_text()
-for tag, f in [('/*@@CSS@@*/', 'style.css'), ('/*@@DATA@@*/', 'data.js'), ('/*@@SIM@@*/', 'sim.js'), ('/*@@TRAIN@@*/', 'training.js'), ('/*@@UI@@*/', 'ui.js')]:
+for tag, f in [('/*@@CSS@@*/', 'style.css'), ('/*@@GEO@@*/', 'geo.js'), ('/*@@DATA@@*/', 'data.js'), ('/*@@SIM@@*/', 'sim.js'), ('/*@@TRAIN@@*/', 'training.js'), ('/*@@UI@@*/', 'ui.js')]:
     body = (src / f).read_text()
     if f.endswith('.js'):
         body = body.replace('</script', '<\\/script')

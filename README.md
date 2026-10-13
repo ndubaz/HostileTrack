@@ -19,6 +19,7 @@ All performance figures are labelled game values built from open sources (Wikipe
 src/
   index.html   page shell with @@ placeholders
   style.css    tokens and layout
+  geo.js       generated far-field coastlines, borders and cities (Natural Earth)
   data.js      threat library, interceptors, maps, scenarios, campaigns
   sim.js       deterministic simulation core (no DOM; runs in Node)
   training.js  drill table objectives and coach steps
@@ -50,6 +51,13 @@ npx serve dist                  # or any static server
 Saves live in the browser's localStorage. Cross-device saves and a leaderboard would need a small backend (Vercel KV or Supabase); the save format is versioned (`hostiletrack.v1`) for that.
 
 ## Changelog
+
+**3.1**
+- Phased-array radar presentation. The MPQ-65 and the AN/TPY-2 have no rotating beam: the scope now shows the array hopping its search beam across the sector in an interleaved raster and revisiting each held track several times a second. Raw returns appear where a beam lands. The stylized sweep stays as an option in Settings.
+- THAAD console fixed: the scan, the fan (to 600 km), range rings (100 to 600 km) and the 200 km engagement ring are drawn from the TPY-2, not from the Patriot radar. The Patriot fan shows faintly for reference.
+- Real far-field geography: coastlines, borders and cities from Natural Earth (public domain) out to 950 km on every map, under the detailed local terrain. `tools/geo.js` rebuilds `src/geo.js`. Nevatim gains its Mediterranean coast.
+- The TPY-2 respects the earth's curvature: a missile far out stays invisible until it climbs above the radar horizon.
+- Track labels declutter in dense raids; the hooked track always keeps its label.
 
 **3.0**
 - Honest failure, calibrated to the record. Interceptors misfire (2%) and fail in flight (3%); a hit can leave the warhead falling (kill assessment UNCERTAIN). Liquid-fuel missiles shed booster bodies that track like warheads and fall short. Cluster warheads open 12 to 20 km up and scatter bomblets over an area; maneuvering warheads jink in the last third of flight. Fire units guide a limited number of missiles at once (8 Patriot, 6 THAAD), so salvos saturate. `tests/calib.test.js` holds a competent crew inside the real leak bands: UAE first night 0-10%, Qatar 2-20%, Israel June 2025 5-25%, Israel mid-March 2026 8-35%.

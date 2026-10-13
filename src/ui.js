@@ -120,15 +120,16 @@ function shadeTerrain(P, hg, N){
   const SEA = lg ? [1, 6, 2] : [7, 14, 19], SEA2 = lg ? [2, 10, 4] : [11, 22, 28], COAST = lg ? [40, 150, 55] : [86, 122, 128];
   const CMIN = lg ? [24, 90, 34] : [70, 82, 72], CIDX = lg ? [50, 170, 70] : [120, 128, 108];
   const az = 315 * Math.PI / 180, al = 38 * Math.PI / 180, Lx = Math.sin(az) * Math.cos(al), Ly = Math.cos(az) * Math.cos(al), Lz = Math.sin(al), EX = 3.2;
+  const fe = Math.round(N * .05);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){
-    const h = at(i, j), o = (j * N + i) * 4;
+    const h = at(i, j), o = (j * N + i) * 4, ed = Math.min(i, j, N - 1 - i, N - 1 - j), fa = ed < fe ? Math.round(255 * ed / fe) : 255;
     if (h < 0){
       let coast = false, near = 0;
       for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (at(i + di, j + dj) >= 0) coast = true;
       if (!coast) for (let k = 2; k <= 8; k += 3) if (at(i + k, j) >= 0 || at(i - k, j) >= 0 || at(i, j + k) >= 0 || at(i, j - k) >= 0){ near = 1 - k / 10; break; }
       const col = coast ? COAST : SEA, n = ((i * 7 + j * 13) % 5) * .35;
       for (let q = 0; q < 3; q++) d[o + q] = col[q] + (SEA2[q] - SEA[q]) * near * (coast ? 0 : 1) + n;
-      d[o + 3] = 255; continue;
+      d[o + 3] = fa; continue;
     }
     const hx0 = Math.max(0, at(i - 1, j)), hx1 = Math.max(0, at(i + 1, j)), hy0 = Math.max(0, at(i, j + 1)), hy1 = Math.max(0, at(i, j - 1));
     const gx = (hx1 - hx0) / (2 * px) * EX, gy = (hy1 - hy0) / (2 * px) * EX; // km per km, exaggerated
@@ -144,7 +145,7 @@ function shadeTerrain(P, hg, N){
       if (idx && steep < .6) base = base * .62 + CIDX[q] * .38; else if (isC && steep < .18) base = base * .82 + CMIN[q] * .18;
       d[o + q] = Math.min(255, base);
     }
-    d[o + 3] = 255;
+    d[o + 3] = fa;
   }
   ctx.putImageData(img, 0, 0);
   return c;
@@ -193,11 +194,26 @@ function lowLine(map, mk, bx, by, ptl, half = 60){
   return (lowCache[key] = pts);
 }
 
+// far field: real coastlines, borders and cities (Natural Earth) out to 950 km
+function drawGeo(ctx, v, G, P){
+  const path = arr => { ctx.beginPath(); for (let i = 0; i < arr.length; i += 2){ const q = proj(v, arr[i], arr[i + 1]); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); } };
+  ctx.fillStyle = P.legacy ? '#041206' : '#141a18';
+  for (const r of G.land){ path(r); ctx.closePath(); ctx.fill('evenodd'); }
+  ctx.strokeStyle = P.legacy ? '#1d6a2a' : '#35545c'; ctx.lineWidth = 1; ctx.globalAlpha = .8;
+  for (const r of G.land){ path(r); ctx.closePath(); ctx.stroke(); }
+  ctx.setLineDash([3, 4]); ctx.strokeStyle = P.dim; ctx.globalAlpha = .45;
+  for (const b of G.borders){ path(b); ctx.stroke(); }
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  if (v.s < 1.6){ ctx.font = `600 10px ${P.mono}`; for (const c of G.cities){ if (Math.abs(c[1]) < 205 && Math.abs(c[2]) < 205) continue; const q = proj(v, c[1], c[2]); if (q[0] < -50 || q[0] > v.W + 50 || q[1] < -20 || q[1] > v.H + 20) continue; ctx.fillStyle = P.dim; ctx.globalAlpha = .75; ctx.fillRect(q[0] - 1.5, q[1] - 1.5, 3, 3); ctx.fillText(c[0], q[0] + 5, q[1] + 3); } ctx.globalAlpha = 1; }
+}
+
 // static layer: terrain, overlays, rings, fan, assets, battery
 function drawBase(ctx, v, M){
   const P = pal(), map = MAP[M.mapKey];
   ctx.save();
-  ctx.fillStyle = map.landDefault ? (P.legacy ? '#020c04' : '#111614') : P.sea; ctx.fillRect(0, 0, v.W, v.H);
+  const G = typeof HT_GEO !== 'undefined' ? HT_GEO[M.mapKey] : null;
+  ctx.fillStyle = G ? (P.legacy ? '#010702' : '#081014') : map.landDefault ? (P.legacy ? '#020c04' : '#111614') : P.sea; ctx.fillRect(0, 0, v.W, v.H);
+  if (G && !v.tilt) drawGeo(ctx, v, G, P);
   if (!v.tilt){
     const a = proj(v, -200, 200), img = terrainImg(M.mapKey);
     ctx.imageSmoothingEnabled = true; ctx.globalAlpha = .9; ctx.drawImage(img, a[0], a[1], 400 * v.s, 400 * v.s); ctx.globalAlpha = 1;
@@ -218,12 +234,13 @@ function drawBase(ctx, v, M){
   for (const c of map.corridors || []){ polyline(ctx, v, c.pts); ctx.strokeStyle = P.cyan; ctx.globalAlpha = .07; ctx.lineWidth = Math.max(6, 12 * v.s * (v.tilt ? .6 : 1)); ctx.stroke(); ctx.globalAlpha = .38; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); const m = c.pts[0], n = c.pts[1], q = proj(v, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2); ctx.fillStyle = P.cyan; ctx.globalAlpha = .75; ctx.fillText(c.name, q[0] + 8, q[1]); ctx.globalAlpha = 1; }
   ctx.fillStyle = P.faint; ctx.font = `600 10px ${P.mono}`;
   for (const l of map.labels || []){ const q = proj(v, l[1], l[2]); ctx.fillText(l[0], q[0], q[1]); }
-  const B = M.bat;
+  const B = M.bat, utSeat = M.seat === 'THAAD' && M.thaad, RC = utSeat ? M.thaad : B, rings = utSeat ? [100, 200, 300, 400, 500, 600] : [25, 50, 100, 150], rT = rings[rings.length - 1];
   ctx.strokeStyle = P.line2; ctx.lineWidth = 1; ctx.font = `10px ${P.mono}`; ctx.fillStyle = P.faint;
-  for (const r of [25, 50, 100, 150]){ circleW(ctx, v, B.x, B.y, r); ctx.globalAlpha = .6; ctx.stroke(); ctx.globalAlpha = 1; const q = proj(v, B.x, B.y + r); ctx.fillText(r + '', q[0] + 3, q[1] + 11); }
+  for (const r of rings){ circleW(ctx, v, RC.x, RC.y, r); ctx.globalAlpha = .6; ctx.stroke(); ctx.globalAlpha = 1; const q = proj(v, RC.x, RC.y + r); ctx.fillText(r + '', q[0] + 3, q[1] + 11); }
   if (!v.tilt){
-    for (let a = 0; a < 360; a += 10){ const big = a % 30 === 0, p1 = H.polar(a, big ? 150 : 154, B), p2 = H.polar(a, 158, B), q1 = proj(v, p1.x, p1.y), q2 = proj(v, p2.x, p2.y); ctx.beginPath(); ctx.moveTo(q1[0], q1[1]); ctx.lineTo(q2[0], q2[1]); ctx.strokeStyle = P.line2; ctx.stroke(); if (big){ const p3 = H.polar(a, 166, B), q3 = proj(v, p3.x, p3.y); ctx.textAlign = 'center'; ctx.fillText(pad(a, 3), q3[0], q3[1] + 3); ctx.textAlign = 'left'; } }
+    for (let a = 0; a < 360; a += 10){ const big = a % 30 === 0, p1 = H.polar(a, rT * (big ? 1 : 1.027), RC), p2 = H.polar(a, rT * 1.053, RC), q1 = proj(v, p1.x, p1.y), q2 = proj(v, p2.x, p2.y); ctx.beginPath(); ctx.moveTo(q1[0], q1[1]); ctx.lineTo(q2[0], q2[1]); ctx.strokeStyle = P.line2; ctx.stroke(); if (big){ const p3 = H.polar(a, rT * 1.107, RC), q3 = proj(v, p3.x, p3.y); ctx.textAlign = 'center'; ctx.fillText(pad(a, 3), q3[0], q3[1] + 3); ctx.textAlign = 'left'; } }
   }
+  if (utSeat){ circleW(ctx, v, M.thaad.x, M.thaad.y, 200); ctx.setLineDash([8, 5]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .55; ctx.stroke(); ctx.setLineDash([]); const q = proj(v, H.polar(M.thaad.ptl + 35, 200, M.thaad).x, H.polar(M.thaad.ptl + 35, 200, M.thaad).y); ctx.fillStyle = P.amber; ctx.fillText('THAAD ENGAGEMENT 200 KM', q[0] + 4, q[1]); ctx.globalAlpha = 1; ctx.fillStyle = P.faint; }
   for (const nb of M.neighbors || []){
     const pts = [[nb.x, nb.y]]; for (let a = nb.ptl - 60; a <= nb.ptl + 60.1; a += 4){ const p = H.polar(a, 150, nb); pts.push([p.x, p.y]); } pts.push([nb.x, nb.y]);
     polyline(ctx, v, pts); ctx.setLineDash([4, 6]); ctx.strokeStyle = nb.on ? P.violet : P.faint; ctx.globalAlpha = .55; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
@@ -231,8 +248,10 @@ function drawBase(ctx, v, M){
   }
   const TH = M.thaad;
   if (TH){
-    const pts = [[TH.x, TH.y]]; for (let a = TH.ptl - TH.half; a <= TH.ptl + TH.half + .1; a += 3){ const p = H.polar(a, 280, TH); pts.push([p.x, p.y]); } pts.push([TH.x, TH.y]);
-    polyline(ctx, v, pts); ctx.setLineDash([2, 7]); ctx.strokeStyle = TH.alive ? P.amber : P.faint; ctx.globalAlpha = M.seat === 'THAAD' ? .7 : .32; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    const pts = [[TH.x, TH.y]]; for (let a = TH.ptl - TH.half; a <= TH.ptl + TH.half + .1; a += 2){ const p = H.polar(a, TH.rmax || 600, TH); pts.push([p.x, p.y]); } pts.push([TH.x, TH.y]);
+    polyline(ctx, v, pts);
+    if (M.seat === 'THAAD' && TH.alive){ ctx.fillStyle = P.legacy ? 'rgba(90,255,130,.04)' : 'rgba(242,165,58,.05)'; ctx.fill(); }
+    ctx.setLineDash(M.seat === 'THAAD' ? [] : [2, 7]); ctx.strokeStyle = TH.alive ? P.amber : P.faint; ctx.globalAlpha = M.seat === 'THAAD' ? .7 : .3; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     const tq = proj(v, TH.x, TH.y); ctx.fillStyle = TH.alive ? P.amber : P.red; ctx.fillRect(tq[0] - 6, tq[1] - 3.5, 12, 7);
     if (!TH.alive){ ctx.strokeStyle = P.red; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(tq[0] - 8, tq[1] - 8); ctx.lineTo(tq[0] + 8, tq[1] + 8); ctx.moveTo(tq[0] + 8, tq[1] - 8); ctx.lineTo(tq[0] - 8, tq[1] + 8); ctx.stroke(); ctx.lineWidth = 1; }
     ctx.font = `600 10px ${P.mono}`; ctx.fillText(TH.alive ? 'TPY-2' : 'TPY-2 · DOWN', tq[0] + 9, tq[1] - 6); ctx.font = `10px ${P.mono}`;
@@ -248,13 +267,14 @@ function drawBase(ctx, v, M){
     polyline(ctx, v, pts);
     const q0 = proj(v, B.x, B.y), gr = ctx.createRadialGradient(q0[0], q0[1], 0, q0[0], q0[1], H.RADAR.rmax * v.s);
     const on = B.on !== false, cc = P.legacy ? '90,255,130' : '82,205,224';
+    if (utSeat){ ctx.setLineDash([3, 5]); ctx.strokeStyle = on ? P.cyan : P.faint; ctx.globalAlpha = .35; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; } else {
     gr.addColorStop(0, on ? `rgba(${cc},.10)` : 'rgba(120,120,120,.05)'); gr.addColorStop(1, on ? `rgba(${cc},.025)` : 'rgba(120,120,120,.02)');
     ctx.fillStyle = gr; ctx.fill();
     ctx.strokeStyle = on ? P.cyan : P.faint; ctx.globalAlpha = .5; ctx.stroke(); ctx.globalAlpha = 1;
     const low = lowLine(map, M.mapKey, B.x, B.y, ptl, half); polyline(ctx, v, low); ctx.setLineDash([3, 4]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .6; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     const lp = low[Math.floor(low.length * .8)], lq = proj(v, lp[0], lp[1]); ctx.fillStyle = P.amber; ctx.globalAlpha = .75; ctx.fillText('100 m LIMIT', lq[0] + 4, lq[1] - 3); ctx.globalAlpha = 1;
     const pe = H.polar(ptl, H.RADAR.rmax, B); polyline(ctx, v, [[B.x, B.y], [pe.x, pe.y]]); ctx.setLineDash([10, 6]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .55; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
-    const pq = proj(v, H.polar(ptl, 130, B).x, H.polar(ptl, 130, B).y); ctx.fillStyle = P.amber; ctx.font = `600 11px ${P.mono}`; ctx.fillText('PTL ' + pad(Math.round(ptl) % 360, 3), pq[0] + 6, pq[1]); ctx.font = `10px ${P.mono}`;
+    const pq = proj(v, H.polar(ptl, 130, B).x, H.polar(ptl, 130, B).y); ctx.fillStyle = P.amber; ctx.font = `600 11px ${P.mono}`; ctx.fillText('PTL ' + pad(Math.round(ptl) % 360, 3), pq[0] + 6, pq[1]); ctx.font = `10px ${P.mono}`; ctx.globalAlpha = 1; }
   }
   if (M.axis){ for (const a of M.axis){ const p1 = H.polar(a, 120, B), p2 = H.polar(a, 165, B); polyline(ctx, v, [[p2.x, p2.y], [p1.x, p1.y]]); ctx.strokeStyle = P.red; ctx.lineWidth = 2.5; ctx.stroke(); ctx.lineWidth = 1; const q = proj(v, p1.x, p1.y); ctx.fillStyle = P.red; ctx.fillText('THREAT ' + pad(a, 3), q[0] + 4, q[1]); } }
   if (M.sites) M.sites.forEach((s, i) => { const q = proj(v, s.x, s.y); ctx.strokeStyle = i === M.siteSel ? P.amber : P.dim; ctx.beginPath(); ctx.arc(q[0], q[1], 7, 0, 7); ctx.stroke(); ctx.fillStyle = i === M.siteSel ? P.amber : P.dim; ctx.fillText(String.fromCharCode(65 + i), q[0] - 3, q[1] + 3.5); });
@@ -291,28 +311,45 @@ function drawLive(ctx, v, M, now, glow){
     ctx.globalAlpha = 1; ctx.font = `10px ${P.mono}`;
   }
   for (const j of M.jammers || []){ const b = H.brgOf(j.x - B.x, j.y - B.y), e = H.polar(b, 170, B); polyline(ctx, v, [[B.x, B.y], [e.x, e.y]]); ctx.strokeStyle = P.red; ctx.globalAlpha = .18 + Math.random() * .12; ctx.lineWidth = Math.max(4, 14 * v.s * .3); ctx.setLineDash([2, 3]); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1; ctx.globalAlpha = 1; }
-  if (M.showFan !== false && B.on !== false && now){
-    const ptl = B.ptl, half = B.half || 60, ph = (now / (2400 * half / 60)) % 2, dir = ph < 1 ? 1 : -1, f = ph < 1 ? ph : 2 - ph, sw = ptl - half + f * half * 2;
-    const q0 = proj(v, B.x, B.y), sc = P.legacy ? '140,255,150' : '110,225,240';
-    for (let k = 14; k >= 0; k--){ // afterglow: wedges fading behind the beam
-      const a0 = sw - dir * (k + 1) * 1.4, a1 = sw - dir * k * 1.4;
-      if (Math.abs(H.angDiff(a0, ptl)) > half || Math.abs(H.angDiff(a1, ptl)) > half) continue;
-      const pa = H.polar(a0, H.RADAR.rmax, B), pb = H.polar(a1, H.RADAR.rmax, B), qa = proj(v, pa.x, pa.y), qb = proj(v, pb.x, pb.y);
-      ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(qa[0], qa[1]); ctx.lineTo(qb[0], qb[1]); ctx.closePath();
-      ctx.fillStyle = `rgba(${sc},${(.13 * (1 - k / 15)).toFixed(3)})`; ctx.fill();
+  // Radar presentation. MPQ-65 and AN/TPY-2 are phased arrays: no rotating beam. The array hops its pencil
+  // beam across the sector in an interleaved search raster and revisits every held track several times a second.
+  const SR = M.seat === 'THAAD' && M.thaad ? {x:M.thaad.x, y:M.thaad.y, ptl:M.thaad.ptl, half:M.thaad.half || 60, rmax:M.thaad.rmax || 600, on:M.thaad.alive && !M.thaad.emcon, ut:true}
+    : {x:B.x, y:B.y, ptl:B.ptl, half:B.half || 60, rmax:H.RADAR.rmax, on:B.on !== false, ut:false};
+  if (M.showFan !== false && SR.on && now){
+    const q0 = proj(v, SR.x, SR.y), sc = P.legacy ? '140,255,150' : SR.ut ? '242,180,90' : '110,225,240', C = M.clutter;
+    const wedge = (a0, a1, al) => { const pa = H.polar(a0, SR.rmax, SR), pb = H.polar(a1, SR.rmax, SR), qa = proj(v, pa.x, pa.y), qb = proj(v, pb.x, pb.y); ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(qa[0], qa[1]); ctx.lineTo(qb[0], qb[1]); ctx.closePath(); ctx.fillStyle = `rgba(${sc},${al.toFixed(3)})`; ctx.fill(); };
+    const paint = az => { // what one beam position sends back: targets, ground clutter on lit terrain, near-in clutter
+      if (!C || v.tilt || M.video === 'SYN') return;
+      for (const e of M.ents) if ((SR.ut ? e.tpy : e.raw) && Math.abs(H.angDiff(H.brgOf(e.x - SR.x, e.y - SR.y), az)) < 1.4){ const j = SR.ut ? 2.5 : .6; C.push({x:e.x + (Math.random() - .5) * j, y:e.y + (Math.random() - .5) * j, t0:now, s:e.rcs > 1 ? 3.6 : e.rcs > .2 ? 2.8 : 2.2}); }
+      if (SR.ut) return;
+      if (Math.random() < .5){ const r = Math.random() ** 2 * 24 + 1, p = H.polar(az + (Math.random() - .5) * 2, r, SR); C.push({x:p.x, y:p.y, t0:now}); }
+      if (Math.random() < .7){ const f = H.terrainFaces(MAP[M.mapKey], SR.x, SR.y, az); if (f.length){ const r = f[Math.floor(Math.random() * f.length)] + Math.random() - .5, p = H.polar(az, r, SR); C.push({x:p.x, y:p.y, t0:now}); } }
+    };
+    if (M.scan === 'SWEEP'){ // stylized rotating sweep, kept as an option
+      const ph = (now / (2400 * SR.half / 60)) % 2, dir = ph < 1 ? 1 : -1, f = ph < 1 ? ph : 2 - ph, sw = SR.ptl - SR.half + f * SR.half * 2;
+      for (let k = 14; k >= 0; k--){ const a0 = sw - dir * (k + 1) * 1.4, a1 = sw - dir * k * 1.4; if (Math.abs(H.angDiff(a0, SR.ptl)) > SR.half || Math.abs(H.angDiff(a1, SR.ptl)) > SR.half) continue; wedge(a0, a1, .13 * (1 - k / 15)); }
+      const se = H.polar(sw, SR.rmax, SR), q1 = proj(v, se.x, se.y); ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(q1[0], q1[1]); ctx.strokeStyle = `rgba(${sc},.6)`; ctx.lineWidth = 1.3; gl(P.cyan, 6); ctx.stroke(); ng(); ctx.lineWidth = 1;
+      for (let k = 0; k < 3; k++) paint(sw + (Math.random() - .5) * 2.5);
+    } else if (M.scanS){
+      const Z = M.scanS, dtf = Math.min(.1, Z.last ? (now - Z.last) / 1000 : 0); Z.last = now;
+      Z.acc += dtf * (SR.ut ? 40 : 65);
+      while (Z.acc >= 1){ Z.acc -= 1; Z.k++; const az = SR.ptl - SR.half + ((Z.k * .6180339887) % 1) * 2 * SR.half; Z.beams.push({az, t0:now}); paint(az); }
+      while (Z.beams.length && now - Z.beams[0].t0 > 280) Z.beams.shift();
+      for (const bm of Z.beams){ const age = (now - bm.t0) / 280; wedge(bm.az - .8, bm.az + .8, .085 * (1 - age)); }
+      for (const e of M.ents){ // track dwells
+        if (!e.trk || !(SR.ut ? e.tpy : e.ownTrk)) continue;
+        const ph = (now / 1000 * (e.ball ? 2.5 : 1.1) + e.uid * .37) % 1; if (ph > .16) continue;
+        const a = 1 - ph / .16, q = proj(v, e.x, e.y, e.z);
+        ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(q[0], q[1]); ctx.strokeStyle = `rgba(${sc},${(.16 * a).toFixed(3)})`; ctx.stroke();
+        ctx.beginPath(); ctx.arc(q[0], q[1], 5 + 6 * (1 - a), 0, 7); ctx.strokeStyle = `rgba(${sc},${(.6 * a).toFixed(3)})`; ctx.stroke();
+      }
     }
-    const se = H.polar(sw, H.RADAR.rmax, B), q1 = proj(v, se.x, se.y);
-    ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(q1[0], q1[1]); ctx.strokeStyle = `rgba(${sc},.6)`; ctx.lineWidth = 1.3; gl(P.cyan, 6); ctx.stroke(); ng(); ctx.lineWidth = 1;
-    if (M.clutter && !v.tilt && M.video !== 'SYN'){ // raw video: returns near the radar and on ridges, painted by the beam and decaying
-      const C = M.clutter;
-      for (const e of M.ents) if (e.raw && Math.abs(H.angDiff(H.brgOf(e.x - B.x, e.y - B.y), sw)) < 1.6) C.push({x:e.x + (Math.random() - .5) * .6, y:e.y + (Math.random() - .5) * .6, t0:now, s:e.rcs > 1 ? 3.6 : e.rcs > .2 ? 2.8 : 2.2});
-      for (let k = 0; k < 3; k++){ const r = Math.random() ** 2 * 24 + 1, p = H.polar(sw + (Math.random() - .5) * 4, r, B); C.push({x:p.x, y:p.y, t0:now}); }
-      if (Math.abs(H.angDiff(sw, ptl)) <= half) for (let k = 0; k < 6; k++){ const b = sw + (Math.random() - .5) * 3, f = H.terrainFaces(MAP[M.mapKey], B.x, B.y, b); if (!f.length) continue; const r = f[Math.floor(Math.random() * f.length)] + Math.random() - .5, p = H.polar(b, r, B); C.push({x:p.x, y:p.y, t0:now}); } // ground returns where the beam strikes terrain it can see
+    if (C && !v.tilt && M.video !== 'SYN'){
       while (C.length && now - C[0].t0 > 1800) C.shift();
       for (const c of C){ const s = proj(v, c.x, c.y), z = c.s || 1.8; ctx.fillStyle = `rgba(${sc},${((c.s ? .85 : .5) * (1 - (now - c.t0) / 1800)).toFixed(3)})`; ctx.fillRect(s[0] - z / 2, s[1] - z / 2, z, z); }
     }
   }
-  const hits = [], raw = M.video === 'RAW', fill = M.sym === '2525';
+  const hits = [], raw = M.video === 'RAW', fill = M.sym === '2525', tl = [];
   for (const m of M.ms || []){ // flyout lines to the predicted intercept point
     if (!m.aim || m.owner === 'nb') continue;
     const q = proj(v, m.x, m.y, m.z), a = proj(v, m.aim.x, m.aim.y, m.aim.z), c = m.owner === 'cuas' ? P.green : m.tier === 'UT' ? P.amber : P.text;
@@ -352,6 +389,8 @@ function drawLive(ctx, v, M, now, glow){
     ng();
     if (k.ka === 'UNCERTAIN'){ ctx.fillStyle = P.amber; ctx.font = `600 9px ${P.mono}`; ctx.fillText('KA?', q[0] - 26, q[1] - 6); }
     if (e.tpy && !e.ownTrk){ ctx.fillStyle = P.amber; ctx.font = `9px ${P.mono}`; ctx.fillText('TPY', q[0] - 22, q[1] + 10); }
+    const lr = {x:q[0] + 8, y:q[1] - 14, w:62, h:24}, clash = e.uid !== M.hooked && tl.some(o => lr.x < o.x + o.w && o.x < lr.x + lr.w && lr.y < o.y + o.h && o.y < lr.y + lr.h);
+    if (clash){ ctx.globalAlpha = 1; continue; } tl.push(lr);
     ctx.font = `600 10.5px ${P.mono}`; ctx.fillText(k.num, q[0] + 9, q[1] - 5);
     ctx.font = `10px ${P.mono}`; ctx.fillStyle = P.dim;
     const altTxt = e.ball ? (e.z.toFixed(0) + 'K') : (e.z < 1 ? Math.round(e.z * 3281) + 'FT' : 'FL' + pad(Math.round(e.z * 32.81), 3));
@@ -557,7 +596,7 @@ function launchBattle(sim, ctx){
 }
 function fitView(){
   const cv = $('#scope'); const r = cv.getBoundingClientRect(); const m = Math.min(r.width, r.height);
-  if (S.seat === 'THAAD' && S.thaad){ B.view.s = Math.max(.25, m / 2 / 260); const c = H.polar(S.thaad.ptl, 140, S.thaad); B.view.cx = c.x; B.view.cy = c.y; return; }
+  if (S.seat === 'THAAD' && S.thaad){ B.view.s = Math.max(.2, m / 2 / 380); const c = H.polar(S.thaad.ptl, 230, S.thaad); B.view.cx = c.x; B.view.cy = c.y; return; }
   B.view.s = Math.max(.6, m / 2 / 120); B.view.cx = S.bat.x + H.polar(S.bat.ptl, 50).x; B.view.cy = S.bat.y + H.polar(S.bat.ptl, 50).y;
 }
 
@@ -604,7 +643,7 @@ function liveModel(now){
   const ms = [];
   for (const m of S.ms){ if (!m.alive) continue; const tr = B.trails[m.id] || (B.trails[m.id] = []); const last = tr[tr.length - 1]; if (!last || Math.hypot(last[0] - m.x, last[1] - m.y) > .8) { tr.push([m.x, m.y, m.z]); if (tr.length > 40) tr.shift(); } ms.push({x:m.x, y:m.y, z:m.z, own:m.owner === 'own', owner:m.owner, tier:m.tier, aim:m.aim, trail:tr}); }
   return {mapKey:S.scn.map, bat:{x:S.bat.x, y:S.bat.y, ptl:S.bat.ptl, half:S.bat.half, on:H.radarOn(S), alive:S.bat.alive}, launchers:S.launchers, assets:S.assets, ents, ms, fx:B.fx, scars:B.scars, neighbors:S.neighbors, jammers:S.ents.filter(e => e.alive && e.kind === 'JAM'), hooked:B.hooked, bty:S.scn.bty.split(' ')[0],
-    thaad:S.thaad, cuas:S.cuas, sbw:S.sbw.filter(a => a.on && a.cx != null), seat:S.seat, video:B.video, sym:store.s.sym};
+    thaad:S.thaad, cuas:S.cuas, sbw:S.sbw.filter(a => a.on && a.cx != null), seat:S.seat, video:B.video, sym:store.s.sym, scan:store.s.scan || 'PA', scanS:B.scanS || (B.scanS = {k:0, last:0, acc:0, beams:[]})};
 }
 function drain(now){
   for (const o of S.out){
@@ -845,7 +884,7 @@ function wireBattle(){
   const cv = $('#scope'); const ptrs = new Map(); let dragged = false, pinch0 = 0, s0 = 1;
   cv.addEventListener('pointerdown', ev => { cv.setPointerCapture(ev.pointerId); ptrs.set(ev.pointerId, {x:ev.clientX, y:ev.clientY, x0:ev.clientX, y0:ev.clientY}); dragged = false; if (ptrs.size === 2){ const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); s0 = B.view.s; } });
   cv.addEventListener('pointermove', ev => { const p = ptrs.get(ev.pointerId); if (!p || !B) return; const dx = ev.clientX - p.x, dy = ev.clientY - p.y; p.x = ev.clientX; p.y = ev.clientY;
-    if (ptrs.size === 2){ const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0) B.view.s = Math.max(.25, Math.min(14, s0 * d / pinch0)); dragged = true; return; }
+    if (ptrs.size === 2){ const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0) B.view.s = Math.max(.18, Math.min(14, s0 * d / pinch0)); dragged = true; return; }
     if (Math.hypot(ev.clientX - p.x0, ev.clientY - p.y0) > 6) dragged = true;
     if (dragged){ B.view.cx -= dx / B.view.s; B.view.cy += dy / B.view.s * (B.view.tilt ? 1.6 : 1); } });
   const up = ev => { const p = ptrs.get(ev.pointerId); ptrs.delete(ev.pointerId); if (!B || !p) return; if (!dragged && ptrs.size === 0 && !stunned()){ const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top; let best = null, bd = 24; for (const h of B.hits){ const d = Math.hypot(h.x - x, h.y - y); if (d < bd){ bd = d; best = h; } } hook(best ? best.uid : null); } };
@@ -879,7 +918,7 @@ function wireBattle(){
   });
   window.addEventListener('resize', () => { if (UI.screen === 'brief') briefDraw(); });
 }
-function zoom(f){ if (!B) return; B.view.s = Math.max(.25, Math.min(14, B.view.s * f)); }
+function zoom(f){ if (!B) return; B.view.s = Math.max(.18, Math.min(14, B.view.s * f)); }
 const stunned = () => B && performance.now() < (B.stunUntil || 0);
 function onSeat(){ B.wpn = S.seat === 'THAAD' ? 'THAAD' : 'AUTO'; B.cardFor = null; fitView(); updatePanels(true); toast('SEAT', S.seat === 'THAAD' ? 'You have THAAD fire control. The Patriot crew fights on its own below you.' : 'You have the Patriot ECS. The THAAD crew works the upper tier.'); }
 
@@ -1285,6 +1324,7 @@ function openSet(){
     ${row('Console', can ? 'WMI is the modern Config 3+ display. Legacy is the green phosphor console.' : 'Legacy console unlocks when you pass Table VIII.', seg('setSkin', [['wmi','WMI'], ['legacy', can ? 'LEGACY' : 'LEGACY · LOCKED']], s.skin))}
     ${row('Voice', 'TCA and TD callouts through your browser’s speech engine.', seg('setVoice', [[true,'ON'], [false,'OFF']], s.voice))}
     ${row('Volume', 'Alerts, ambience and voice.', `<input type="range" id="setVol" min="0" max="1" step=".05" value="${s.vol}" style="width:100%;max-width:280px;accent-color:var(--amber)">`)}
+    ${row('Radar scan', 'Phased array: the beam hops across the sector and revisits held tracks, as on the real MPQ-65 and TPY-2. Sweep: the stylized rotating beam from earlier versions.', seg('setScan', [['PA','PHASED ARRAY'], ['SWEEP','SWEEP']], s.scan || 'PA'))}
     ${row('Track symbols', 'House frames, or filled frames with a class letter in the style of MIL-STD-2525.', seg('setSym', [['house','HOUSE'], ['2525','2525 FILLED']], s.sym || 'house'))}
     ${row('Expert mode', 'ENGAGE fires on tap and confirmation prompts disappear, except ROE warnings.', seg('setExp', [[false,'OFF'], [true,'ON']], s.expert))}
     ${row('Equipment faults', 'How often the radar, launchers and power plant break during a battle.', seg('setDiff', [['off','OFF'], ['normal','NORMAL'], ['hard','HARD']], s.diff))}
@@ -1294,7 +1334,7 @@ function openSet(){
     ${row('Reset progress', 'Clears passed tables, best scores and campaigns on this device.', '<button class="btn danger sm" type="button" id="setReset">Reset</button>')}`;
   const bind = (id, key, conv, after) => $('#' + id).querySelectorAll('button').forEach(b => b.onclick = () => { if (id === 'setSkin' && b.dataset.v === 'legacy' && !unlocked()) return; s[key] = conv(b.dataset.v); store.save(); $('#' + id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); after && after(); });
   bind('setSkin', 'skin', v => v, applySkin); bind('setVoice', 'voice', v => v === 'true', () => { if (!s.voice) VO.stop(); });
-  bind('setExp', 'expert', v => v === 'true'); bind('setRed', 'red', v => v); bind('setSym', 'sym', v => v);
+  bind('setExp', 'expert', v => v === 'true'); bind('setRed', 'red', v => v); bind('setSym', 'sym', v => v); bind('setScan', 'scan', v => v);
   $('#setRedReset').onclick = () => { store.d.red = {}; store.save(); openSet(); }; bind('setDiff', 'diff', v => v); bind('setSpd', 'speed', v => +v); bind('setUnl', 'unlockAll', v => v === 'true', () => { applySkin(); openSet(); });
   $('#setVol').oninput = ev => { s.vol = +ev.target.value; AU.vol(s.vol); store.save(); };
   $('#setReset').onclick = () => modal('Reset progress', '<p>This clears every passed table, best score and campaign on this device.</p>', [{t:'Cancel'}, {t:'Reset', cls:'danger', f:() => { store.d.p = {tables:{}, best:{}, cert:false, plays:0}; store.d.camp = {}; store.save(); applySkin(); openSet(); }}], true);
