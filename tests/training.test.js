@@ -1,10 +1,10 @@
 // Plays every crew drill table with a correct crew (must pass) and a sloppy crew (must fail).
-const D = require('../src/data.js'), S = require('../src/sim.js'), TR = require('../src/training.js');
+const D = require('../src/data.js'), S = require('../src/sim.js'), TR = require('../src/training.js'), H = S;
 const scn = id => D.SCN.find(s => s.id === id);
 const correctId = e => e.truth === 'F' ? 'FRD' : e.truth === 'N' ? 'NEU' : 'HOS';
 
 function run(id, opts, bot){
-  const s = S.createSim(scn(id), {seed:opts.seed, site:opts.site, ptl:opts.ptl ?? scn(id).ptl, mode:opts.mode, doctrine:opts.doctrine});
+  const s = S.createSim(scn(id), {seed:opts.seed, site:opts.site, ptl:opts.ptl ?? scn(id).ptl, mode:opts.mode, doctrine:opts.doctrine, seat:opts.seat});
   const U = {hooked:{kinds:new Set(), ent:null}, tilted:false, zoomed:false};
   let n = 0;
   while (!s.ended && n < 40000){ S.step(s); n++; if (n % 10 === 0) bot(s, U); s.out.length = 0; }
@@ -24,6 +24,10 @@ const tables = {
   t6:{good:[{mode:'SEMI'}, s => { S.ack(s); if (s.wcs !== 'HOLD') for (const e of tracked(s)) if (e.tag === 'trg') S.playerId(s, e, 'HOS'); }],
       bad:[{mode:'SEMI'}, s => { if (s.t > 120) S.ack(s); for (const e of tracked(s)) if (e.tag === 'trg') S.playerId(s, e, 'HOS'); }]},
   t7:{good:[{mode:'SEMI'}, s => declareAll(s, correctId)], bad:[{mode:'MANUAL'}, s => declareAll(s, correctId)]},
+  t9:{good:[{}, s => { for (const e of s.ents) if (e.alive && e.trk && e.trk.est && e.trk.tpy && e.T.ballistic && H.assess(s, e).dal) S.engage(s, e, {src:'player', wpn:'THAAD'}); }],
+      bad:[{doctrine:{THAAD:'RIPPLE'}}, s => { for (const e of s.ents) if (e.alive && e.trk && e.trk.est && e.trk.tpy && e.T.ballistic) S.engage(s, e, {src:'player', wpn:'THAAD'}); }]},
+  t10:{good:[{mode:'SEMI'}, s => { if (S.rounds(s, 'THAAD', false) === 0 && s.doctrine.LAYER !== 'CONC') S.cmd(s, 'layer', {v:'CONC'}); }],
+      bad:[{mode:'MANUAL'}, s => { for (const e of tracked(s)) if (e.T.ballistic && e.trk.cls && e.z < 9) S.engage(s, e, {src:'player'}); }]},
   t8:{good:[{mode:'SEMI', doctrine:{TBM:'SLS'}}, s => { S.ack(s); declareAll(s, e => e.T.decoy ? 'UNK' : correctId(e)); }], bad:[{mode:'AUTO'}, s => {}]},
 };
 let fails = 0;

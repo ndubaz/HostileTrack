@@ -117,6 +117,29 @@ const TABLES = {
       {t:'Watch the MSE and GEM-T counters at the top right. Sixteen fired is your ceiling.', el:'counts', last:true},
     ]},
   8:{objectives:[{t:'Score 85 or better', check:(S, U) => !S ? true : U.end ? S.score && S.score.total >= 85 : true, tip:'Review the findings: each one names the habit that cost points.'}], steps:[]},
+  9:{
+    objectives:[
+      {t:'No missile reaches the DAL', check:S => !S || S.st.leak === 0, tip:'Engage as soon as the TPY-2 track firms up. THAAD needs the missile above 25 km.'},
+      {t:'Let the missile headed for open ground fall', check:S => !S || S.st.waste.nondal === 0, tip:'Read the impact marker. Grey means no defended asset: hold your fire.'},
+      {t:'Spend 6 THAAD rounds or fewer', check:S => !S || S.st.fired.THAAD <= 6, live:S => `${S.st.fired.THAAD} fired`, tip:'Shoot-look-shoot: one round, wait for the kill assessment, fire again only on a miss.'},
+    ],
+    steps:[
+      {pause:true, t:'You are at THAAD fire control. The scope now shows the AN/TPY-2 picture: ballistic missiles appear hundreds of kilometers out, long before the Patriot radar sees them. The Patriot crew below you runs on its own.'},
+      {t:'Hook the first ballistic track when it appears and press ENGAGE. The weapon is THAAD. Doctrine is shoot-look-shoot.', done:S => S.st.fired.THAAD >= 1, el:'eng'},
+      {t:'Watch the elevation strip on the TRACK page: the intercept happens far above the 25 km floor. Hold fire on any missile whose impact marker is grey.', last:true},
+    ]},
+  10:{
+    objectives:[
+      {t:'No cluster warhead opens over the DAL', check:S => !S || S.st.clusterHits === 0, tip:'Kill clusters before 12 km. If THAAD is dry, switch layer doctrine to CONCURRENT so Patriot shoots early.'},
+      {t:'One hit on the DAL or fewer', check:S => !S || S.st.leak <= 1, tip:'Keep SEMIAUTO on so the computer fires the moment a solution exists.'},
+      {t:'Fire nothing at booster bodies', check:S => !S || S.st.waste.fals === 0, tip:'A booster body is big on radar and its impact point falls short of the DAL. Let it fall.'},
+    ],
+    steps:[
+      {pause:true, t:'You are back at the Patriot ECS. A THAAD crew with six interceptors works above you. Cluster warheads open between 12 and 20 km up; below that, nothing you fire can stop the bomblets.'},
+      {t:'Fight in SEMIAUTO. Layer doctrine WAIT holds your shots while THAAD is still working a missile above 25 km.', done:S => S.mode === 'SEMI', el:'mode'},
+      {t:'Near apogee each liquid-fuel missile drops its booster. It shows as another TBM track whose impact falls short. Leave it.', done:S => S.ents.some(e => e.kind === 'TANK' && e.trk && e.trk.est)},
+      {t:'When THAAD runs dry, open SYSTEM and set the layer to CONCURRENT so Patriot takes clusters early.', last:true},
+    ]},
 };
 
 function evaluate(table, S, U){
