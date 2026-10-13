@@ -53,7 +53,7 @@ Saves live in the browser's localStorage. Cross-device saves and a leaderboard w
 ## Changelog
 
 **3.1**
-- Phased-array radar presentation. The MPQ-65 and the AN/TPY-2 have no rotating beam: the scope now shows the array hopping its search beam across the sector in an interleaved raster and revisiting each held track several times a second. Raw returns appear where a beam lands. The stylized sweep stays as an option in Settings.
+- Radar display defaults to CLEAN, which matches the real operator picture: no beam on screen, a steady sector, and raw returns (if shown) that refresh quietly once a second. The MPQ-65 and AN/TPY-2 are phased arrays with no rotating beam. BEAMS (the array hopping its search beam and revisiting tracks) and SWEEP (the old rotating beam) remain as stylized options in Settings.
 - THAAD console fixed: the scan, the fan (to 600 km), range rings (100 to 600 km) and the 200 km engagement ring are drawn from the TPY-2, not from the Patriot radar. The Patriot fan shows faintly for reference.
 - Real far-field geography: coastlines, borders and cities from Natural Earth (public domain) out to 950 km on every map, under the detailed local terrain. `tools/geo.js` rebuilds `src/geo.js`. Nevatim gains its Mediterranean coast.
 - The TPY-2 respects the earth's curvature: a missile far out stays invisible until it climbs above the radar horizon.

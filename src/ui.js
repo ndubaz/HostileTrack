@@ -325,7 +325,14 @@ function drawLive(ctx, v, M, now, glow){
       if (Math.random() < .5){ const r = Math.random() ** 2 * 24 + 1, p = H.polar(az + (Math.random() - .5) * 2, r, SR); C.push({x:p.x, y:p.y, t0:now}); }
       if (Math.random() < .7){ const f = H.terrainFaces(MAP[M.mapKey], SR.x, SR.y, az); if (f.length){ const r = f[Math.floor(Math.random() * f.length)] + Math.random() - .5, p = H.polar(az, r, SR); C.push({x:p.x, y:p.y, t0:now}); } }
     };
-    if (M.scan === 'SWEEP'){ // stylized rotating sweep, kept as an option
+    if (M.scan === 'CLEAN' && M.scanS){ // the real operator picture: no beam on screen; raw returns refresh quietly each search frame
+      const Z = M.scanS;
+      if (C && now - (Z.frame || 0) > 1000){
+        Z.frame = now;
+        for (const e of M.ents) if (SR.ut ? e.tpy : e.raw){ const j = SR.ut ? 2.5 : .6; C.push({x:e.x + (Math.random() - .5) * j, y:e.y + (Math.random() - .5) * j, t0:now, s:e.rcs > 1 ? 3.6 : e.rcs > .2 ? 2.8 : 2.2, life:2400}); }
+        if (!SR.ut) for (let k = 0; k < 40; k++){ const az = SR.ptl - SR.half + Math.random() * 2 * SR.half; if (k < 14){ const r = Math.random() ** 2 * 24 + 1, p = H.polar(az, r, SR); C.push({x:p.x, y:p.y, t0:now, life:2400}); } else { const f = H.terrainFaces(MAP[M.mapKey], SR.x, SR.y, az); if (f.length){ const r = f[Math.floor(Math.random() * f.length)] + Math.random() - .5, p = H.polar(az, r, SR); C.push({x:p.x, y:p.y, t0:now, life:2400}); } } }
+      }
+    } else if (M.scan === 'SWEEP'){ // stylized rotating sweep, kept as an option
       const ph = (now / (2400 * SR.half / 60)) % 2, dir = ph < 1 ? 1 : -1, f = ph < 1 ? ph : 2 - ph, sw = SR.ptl - SR.half + f * SR.half * 2;
       for (let k = 14; k >= 0; k--){ const a0 = sw - dir * (k + 1) * 1.4, a1 = sw - dir * k * 1.4; if (Math.abs(H.angDiff(a0, SR.ptl)) > SR.half || Math.abs(H.angDiff(a1, SR.ptl)) > SR.half) continue; wedge(a0, a1, .13 * (1 - k / 15)); }
       const se = H.polar(sw, SR.rmax, SR), q1 = proj(v, se.x, se.y); ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(q1[0], q1[1]); ctx.strokeStyle = `rgba(${sc},.6)`; ctx.lineWidth = 1.3; gl(P.cyan, 6); ctx.stroke(); ng(); ctx.lineWidth = 1;
@@ -345,8 +352,8 @@ function drawLive(ctx, v, M, now, glow){
       }
     }
     if (C && !v.tilt && M.video !== 'SYN'){
-      while (C.length && now - C[0].t0 > 1800) C.shift();
-      for (const c of C){ const s = proj(v, c.x, c.y), z = c.s || 1.8; ctx.fillStyle = `rgba(${sc},${((c.s ? .85 : .5) * (1 - (now - c.t0) / 1800)).toFixed(3)})`; ctx.fillRect(s[0] - z / 2, s[1] - z / 2, z, z); }
+      while (C.length && now - C[0].t0 > (C[0].life || 1800)) C.shift();
+      for (const c of C){ const s = proj(v, c.x, c.y), z = c.s || 1.8, L = c.life || 1800, age = (now - c.t0) / L; if (age >= 1) continue; ctx.fillStyle = `rgba(${sc},${((c.s ? .85 : .5) * (c.life ? Math.min(1, 1.6 * (1 - age)) : 1 - age)).toFixed(3)})`; ctx.fillRect(s[0] - z / 2, s[1] - z / 2, z, z); }
     }
   }
   const hits = [], raw = M.video === 'RAW', fill = M.sym === '2525', tl = [];
@@ -643,7 +650,7 @@ function liveModel(now){
   const ms = [];
   for (const m of S.ms){ if (!m.alive) continue; const tr = B.trails[m.id] || (B.trails[m.id] = []); const last = tr[tr.length - 1]; if (!last || Math.hypot(last[0] - m.x, last[1] - m.y) > .8) { tr.push([m.x, m.y, m.z]); if (tr.length > 40) tr.shift(); } ms.push({x:m.x, y:m.y, z:m.z, own:m.owner === 'own', owner:m.owner, tier:m.tier, aim:m.aim, trail:tr}); }
   return {mapKey:S.scn.map, bat:{x:S.bat.x, y:S.bat.y, ptl:S.bat.ptl, half:S.bat.half, on:H.radarOn(S), alive:S.bat.alive}, launchers:S.launchers, assets:S.assets, ents, ms, fx:B.fx, scars:B.scars, neighbors:S.neighbors, jammers:S.ents.filter(e => e.alive && e.kind === 'JAM'), hooked:B.hooked, bty:S.scn.bty.split(' ')[0],
-    thaad:S.thaad, cuas:S.cuas, sbw:S.sbw.filter(a => a.on && a.cx != null), seat:S.seat, video:B.video, sym:store.s.sym, scan:store.s.scan || 'PA', scanS:B.scanS || (B.scanS = {k:0, last:0, acc:0, beams:[]})};
+    thaad:S.thaad, cuas:S.cuas, sbw:S.sbw.filter(a => a.on && a.cx != null), seat:S.seat, video:B.video, sym:store.s.sym, scan:store.s.scan || 'CLEAN', scanS:B.scanS || (B.scanS = {k:0, last:0, acc:0, beams:[]})};
 }
 function drain(now){
   for (const o of S.out){
@@ -1324,7 +1331,7 @@ function openSet(){
     ${row('Console', can ? 'WMI is the modern Config 3+ display. Legacy is the green phosphor console.' : 'Legacy console unlocks when you pass Table VIII.', seg('setSkin', [['wmi','WMI'], ['legacy', can ? 'LEGACY' : 'LEGACY · LOCKED']], s.skin))}
     ${row('Voice', 'TCA and TD callouts through your browser’s speech engine.', seg('setVoice', [[true,'ON'], [false,'OFF']], s.voice))}
     ${row('Volume', 'Alerts, ambience and voice.', `<input type="range" id="setVol" min="0" max="1" step=".05" value="${s.vol}" style="width:100%;max-width:280px;accent-color:var(--amber)">`)}
-    ${row('Radar scan', 'Phased array: the beam hops across the sector and revisits held tracks, as on the real MPQ-65 and TPY-2. Sweep: the stylized rotating beam from earlier versions.', seg('setScan', [['PA','PHASED ARRAY'], ['SWEEP','SWEEP']], s.scan || 'PA'))}
+    ${row('Radar display', 'Clean is what the operator really sees: a computer-drawn picture with no beam on screen. Beams and Sweep are stylized views: beams shows the phased array hopping its search beam and revisiting tracks; sweep is the rotating beam from earlier versions.', seg('setScan', [['CLEAN','CLEAN'], ['PA','BEAMS'], ['SWEEP','SWEEP']], s.scan || 'CLEAN'))}
     ${row('Track symbols', 'House frames, or filled frames with a class letter in the style of MIL-STD-2525.', seg('setSym', [['house','HOUSE'], ['2525','2525 FILLED']], s.sym || 'house'))}
     ${row('Expert mode', 'ENGAGE fires on tap and confirmation prompts disappear, except ROE warnings.', seg('setExp', [[false,'OFF'], [true,'ON']], s.expert))}
     ${row('Equipment faults', 'How often the radar, launchers and power plant break during a battle.', seg('setDiff', [['off','OFF'], ['normal','NORMAL'], ['hard','HARD']], s.diff))}
