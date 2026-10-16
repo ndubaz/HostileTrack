@@ -356,7 +356,7 @@ function drawLive(ctx, v, M, now, glow){
       for (const c of C){ const s = proj(v, c.x, c.y), z = c.s || 1.8, L = c.life || 1800, age = (now - c.t0) / L; if (age >= 1) continue; ctx.fillStyle = `rgba(${sc},${((c.s ? .85 : .5) * (c.life ? Math.min(1, 1.6 * (1 - age)) : 1 - age)).toFixed(3)})`; ctx.fillRect(s[0] - z / 2, s[1] - z / 2, z, z); }
     }
   }
-  const hits = [], raw = M.video === 'RAW', fill = M.sym === '2525', tl = [];
+  const hits = [], raw = false, fill = M.sym === '2525', tl = [];
   for (const m of M.ms || []){ // flyout lines to the predicted intercept point
     if (!m.aim || m.owner === 'nb') continue;
     const q = proj(v, m.x, m.y, m.z), a = proj(v, m.aim.x, m.aim.y, m.aim.z), c = m.owner === 'cuas' ? P.green : m.tier === 'UT' ? P.amber : P.text;
@@ -586,7 +586,8 @@ function startBattle(){
 }
 function launchBattle(sim, ctx){
   S = sim; const scn = S.scn;
-  B = {view:{cx:S.bat.x, cy:S.bat.y, s:2.2, W:100, H:100, tilt:false}, hooked:null, hits:[], hist:{}, trails:{}, fx:[], scars:[], speed:store.s.speed || 1, acc:0, last:performance.now(), logN:0, panelT:0, wpn:'AUTO', cardFor:null, coach:null, sheet:'', toastT:0, camp:ctx.camp, brief:ctx.brief, idLog:{}, rewound:S.rewoundAt != null, page:'trk', h:{}, video:store.s.video || 'MIX', stunUntil:0};
+  B = {view:{cx:S.bat.x, cy:S.bat.y, s:2.2, W:100, H:100, tilt:false}, hooked:null, hits:[], hist:{}, trails:{}, fx:[], scars:[], speed:store.s.speed || 1, acc:0, last:performance.now(), logN:0, panelT:0, wpn:'AUTO', cardFor:null, coach:null, sheet:'', toastT:0, camp:ctx.camp, brief:ctx.brief, idLog:{}, rewound:S.rewoundAt != null, page:'trk', h:{}, video:store.s.video === 'MIX' ? 'MIX' : 'SYN', stunUntil:0};
+  $('#zVid').textContent = B.video;
   B.wpn = S.seat === 'THAAD' ? 'THAAD' : 'AUTO';
   if (!B.rewound){ store.p.plays++; store.save(); }
   $('#sysPage').innerHTML = '<div id="sysLive"></div>' + MANUAL();
@@ -883,7 +884,7 @@ function wireBattle(){
   $('#swHold').onclick = () => { const e = hookedEnt(); if (e && !stunned()) H.cmd(S, 'hold', {uid:e.uid}); };
   $('#swCuas').onclick = () => { if (!stunned()) assignCuas(hookedEnt()); };
   $('#swPtt').onclick = () => { if (S && !stunned()){ H.cmd(S, 'ack'); AU.tone('squelch'); } };
-  $('#zVid').onclick = () => { if (!B) return; const o = ['MIX', 'SYN', 'RAW']; B.video = o[(o.indexOf(B.video) + 1) % 3]; $('#zVid').textContent = B.video; store.s.video = B.video; store.save(); };
+  $('#zVid').onclick = () => { if (!B) return; B.video = B.video === 'MIX' ? 'SYN' : 'MIX'; $('#zVid').textContent = B.video; $('#zVid').title = B.video === 'MIX' ? 'Symbols plus raw returns' : 'Symbols only, as on the real console'; store.s.video = B.video; store.save(); };
   $('#zIn').onclick = () => zoom(1.4); $('#zOut').onclick = () => zoom(1 / 1.4);
   $('#zCtr').onclick = () => { if (B){ B.view.cx = S.bat.x; B.view.cy = S.bat.y; } };
   $('#z3d').onclick = () => { if (!B) return; B.view.tilt = !B.view.tilt; if (B.U) B.U.tilted = true; $('#z3d').classList.toggle('on', B.view.tilt); };
@@ -1317,7 +1318,7 @@ function openLib(){
     <h2 style="margin-top:28px">Open sources</h2>
     <ul class="intel"><li><a href="https://en.wikipedia.org/wiki/MIM-104_Patriot" target="_blank" rel="noopener" style="color:var(--cyan)">MIM-104 Patriot (Wikipedia)</a></li><li><a href="https://www.globalsecurity.org/space/library/policy/army/fm/44-85/Appb.htm" target="_blank" rel="noopener" style="color:var(--cyan)">FM 44-85, Appendix B (GlobalSecurity)</a></li><li><a href="https://militaryembedded.com/radar-ew/sensors/sweden-requests-patriot-configuration-3-in-fms-valued-at-3-2-billion" target="_blank" rel="noopener" style="color:var(--cyan)">Sweden Configuration 3+ FMS notification</a></li><li><a href="https://www.armyrecognition.com/archives/archives-land-defense/land-defense-2023/spain-to-secure-2-8-billion-of-us-patriot-configuration-3-modernized-fire-units" target="_blank" rel="noopener" style="color:var(--cyan)">Spain Configuration 3+ and PDB-8 interface</a></li></ul>
     <h2 style="margin-top:28px">Keys</h2>
-    <p class="mintro">Space acknowledge · 1–5 identity (Friend, Neutral, Unknown, Suspect, Hostile) · I interrogate · E engage · H hold fire · U counter-drone on the hooked drone · V veto · Tab next threat · M cycle mode · G swap Patriot and THAAD seats · R cycle video (blended, synthetic, raw) · P pause · [ ] speed · + − zoom · T 3D · C centre · Esc unhook.</p>`;
+    <p class="mintro">Space acknowledge · 1–5 identity (Friend, Neutral, Unknown, Suspect, Hostile) · I interrogate · E engage · H hold fire · U counter-drone on the hooked drone · V veto · Tab next threat · M cycle mode · G swap Patriot and THAAD seats · R toggle raw returns under the symbols · P pause · [ ] speed · + − zoom · T 3D · C centre · Esc unhook.</p>`;
   $('#lBack').onclick = () => openMenu();
 }
 

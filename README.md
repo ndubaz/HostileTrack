@@ -53,6 +53,7 @@ Saves live in the browser's localStorage. Cross-device saves and a leaderboard w
 ## Changelog
 
 **3.1**
+- Video toggle is now SYN (symbols only, the default, as on the real console) or MIX (symbols plus raw returns). The returns-only RAW mode is gone: it hid classified track symbols and confused play.
 - Radar display defaults to CLEAN, which matches the real operator picture: no beam on screen, a steady sector, and raw returns (if shown) that refresh quietly once a second. The MPQ-65 and AN/TPY-2 are phased arrays with no rotating beam. BEAMS (the array hopping its search beam and revisiting tracks) and SWEEP (the old rotating beam) remain as stylized options in Settings.
 - THAAD console fixed: the scan, the fan (to 600 km), range rings (100 to 600 km) and the 200 km engagement ring are drawn from the TPY-2, not from the Patriot radar. The Patriot fan shows faintly for reference.
 - Real far-field geography: coastlines, borders and cities from Natural Earth (public domain) out to 950 km on every map, under the detailed local terrain. `tools/geo.js` rebuilds `src/geo.js`. Nevatim gains its Mediterranean coast.
