@@ -29,6 +29,7 @@ tests/sim.test.js runs every scenario headless
 tests/training.test.js plays each drill table with a correct and a sloppy crew
 tests/v2.test.js checks replay determinism, rewind, red commander and ghost
 tests/calib.test.js holds a competent crew inside real 2025-26 leak bands
+tests/bn.test.js checks battalion play, legacy against IBCS, and editor share codes
 public/        manifest, service worker, icon
 ```
 
@@ -36,9 +37,10 @@ public/        manifest, service worker, icon
 
 ```bash
 python3 tools/build.py          # writes dist/index.html
-node tests/sim.test.js          # headless run of all 24 scenarios
+node tests/sim.test.js          # headless run of all 26 scenarios
 node tests/training.test.js     # every table: correct crew passes, sloppy crew fails
 node tests/calib.test.js        # leak rates against the 2025-26 record
+node tests/bn.test.js           # battalion fire direction, legacy and IBCS
 npx serve dist                  # or any static server
 ```
 
@@ -51,6 +53,15 @@ npx serve dist                  # or any static server
 Saves live in the browser's localStorage. Cross-device saves and a leaderboard would need a small backend (Vercel KV or Supabase); the save format is versioned (`hostiletrack.v1`) for that.
 
 ## Changelog
+
+**4.0**
+- Battalion fire direction. A new Battalion tab puts you in the FDC over four Patriot batteries (and an AI THAAD battery in the Negev). Each battery has its own radar, launchers, fire-control channels and crew. Tiles along the floor show each unit's radar, rounds and missiles in the air, with AUTO/HOLD, EMCON and PTL controls.
+- Legacy or IBCS, chosen in the brief. Legacy: each battery fires only on its own radar track, learns of its neighbours' shots about four seconds late, and two batteries can shoot the same missile. Tracks arrive with a lag, can carry two numbers (dual designation, correlate with X) and can swap numbers and identities where they cross. IBCS: one composite track per target, any launcher fires on any sensor's track, the best shooter is picked for you, LTAMDS 360° radars replace the sector radar on two batteries, and friendly fighters are matched to their Link 16 position reports. Same seed, both ways: in tests IBCS spends about half the PAC-3 rounds legacy does.
+- Airspace control. Lanes, CAP boxes, weapons free zones and base defense zones on the scope. Crews do not declare silent tracks inside a lane or CAP box, so drones that mix with the fighters are yours to sort out. Fighters with a dead Mode 4 stray off the lane, and every engagement a crew starts on an air track it declared itself gives you a six-second veto.
+- Two battles: Wisła Night (south-east Poland) and Negev Shield (Israel). In the Negev, towns count: warheads on Beersheba, Dimona or Arad score against you, and intercepts low over a town drop debris on it. Towns under a predicted impact sound their sirens.
+- Scenario editor. Pick any layout, set the threat axis, length, mix of eleven threat types, rules and friendly air, and fight it. A share code carries the whole raid; save up to twelve.
+- Station: one alert line ranked by urgency with its own tones (click it to act), phosphor afterglow that fades toward amber, faint ring burn-in, glare that follows the cursor, light spill on the bezel, white or red shelter lighting, a grease-pencil battalion status board, cooling fans, keyboard clicks, radio squelch tails, and launches and impacts you hear late and low when they are far away.
+- The doctrinal ghost and the command-log replay both cover battalion battles. `tests/bn.test.js` checks the legacy and IBCS behaviour, airspace control and share codes.
 
 **3.1**
 - Video toggle is now SYN (symbols only, the default, as on the real console) or MIX (symbols plus raw returns). The returns-only RAW mode is gone: it hid classified track symbols and confused play.
@@ -91,5 +102,6 @@ Saves live in the browser's localStorage. Cross-device saves and a leaderboard w
 
 ## Roadmap (from the design plan)
 
-- Phase 5: multi-battery and ICC battalion play, IBCS mode, recorded voice lines, online leaderboard.
+- 4.1: weather and ducting, hypersonic glide vehicles, visible logistics (reload trucks, resupply convoys), a battalion drill table.
+- Later: two-player crew over a small relay, recorded voice lines, online leaderboard.
 - Port to the Vite + TypeScript + PixiJS structure in the plan once the gameplay settles; `sim.js` moves into a Web Worker unchanged.

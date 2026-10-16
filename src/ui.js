@@ -12,8 +12,8 @@ const tableReq = t => t === 9 ? 5 : t - 1;
 
 // ---------- persistence ----------
 const store = {
-  d:{s:{skin:'wmi', voice:true, vol:.7, expert:false, diff:'normal', speed:1, unlockAll:false, red:'adaptive', tca:'alvarez', delegate:{reload:true, faults:true}}, p:{tables:{}, best:{}, cert:false, plays:0}, camp:{}, red:{}},
-  load(){ try { const j = JSON.parse(localStorage.getItem('hostiletrack.v1') || 'null'); if (j){ Object.assign(this.d.s, j.s || {}); Object.assign(this.d.p, j.p || {}); this.d.camp = j.camp || {}; this.d.red = j.red || {}; } } catch (e) {} },
+  d:{s:{skin:'wmi', voice:true, vol:.7, expert:false, diff:'normal', speed:1, unlockAll:false, red:'adaptive', tca:'alvarez', delegate:{reload:true, faults:true}, crt:true, light:'AUTO'}, p:{tables:{}, best:{}, cert:false, plays:0}, camp:{}, red:{}, custom:[]},
+  load(){ try { const j = JSON.parse(localStorage.getItem('hostiletrack.v1') || 'null'); if (j){ Object.assign(this.d.s, j.s || {}); Object.assign(this.d.p, j.p || {}); this.d.camp = j.camp || {}; this.d.red = j.red || {}; this.d.custom = Array.isArray(j.custom) ? j.custom : []; } } catch (e) {} },
   save(){ try { localStorage.setItem('hostiletrack.v1', JSON.stringify(this.d)); } catch (e) {} },
   get s(){ return this.d.s; }, get p(){ return this.d.p; },
 };
@@ -41,9 +41,16 @@ const AU = {ctx:null, out:null, amb:null, noiseBuf:null,
       case 'veto': for (let i = 0; i < 4; i++) o('square', 1500, 1500, .06, .05, i * .12); break;
       case 'impact': this.noise(2.4, 240, .8); o('sine', 55, 28, 1.3, .45); break;
       case 'squelch': this.noise(.09, 3200, .05); break;
+      case 'squelch2': this.noise(.06, 2600, .025); break;
       case 'click': o('square', 2200, 2200, .015, .025); break;
+      case 'key': this.noise(.025, 5200, .05); o('square', 1700 + Math.random() * 500, 1700, .012, .012); break;
+      case 'a3': o('square', 1250, 1250, .07, .045); o('square', 940, 940, .07, .045, .09); break;
+      case 'a2': o('triangle', 880, 880, .09, .06); break;
+      case 'siren': o('sawtooth', 380, 760, 1.1, .018); o('sawtooth', 760, 380, 1.1, .018, 1.1); break;
+      case 'debris': this.noise(.7, 900, .08); break;
     }
   },
+  rumble(delay, gain, impact){ if (!this.ctx) return; this.noise(impact ? 2.6 : 1.9, impact ? 200 : 300, gain, delay); this.osc('sine', impact ? 48 : 60, 28, 1.4, gain * .7, delay); },
   startAmb(){
     if (!this.ctx || this.amb) return; const c = this.ctx;
     const n = c.sampleRate * 4, b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0); let last = 0;
@@ -51,7 +58,10 @@ const AU = {ctx:null, out:null, amb:null, noiseBuf:null,
     const s = c.createBufferSource(); s.buffer = b; s.loop = true; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 520; const g = c.createGain(); g.gain.value = .07;
     s.connect(f); f.connect(g); g.connect(this.out); s.start();
     const h1 = c.createOscillator(), h2 = c.createOscillator(), hg = c.createGain(); h1.frequency.value = 60; h2.frequency.value = 120; hg.gain.value = .012; h1.connect(hg); h2.connect(hg); hg.connect(this.out); h1.start(); h2.start();
-    this.amb = [s, h1, h2];
+    // equipment cooling fans: a band of air noise with a faint blade whine
+    const fs = c.createBufferSource(); fs.buffer = this.noiseBuf; fs.loop = true; const fb = c.createBiquadFilter(); fb.type = 'bandpass'; fb.frequency.value = 1300; fb.Q.value = .7; const fg = c.createGain(); fg.gain.value = .012; fs.connect(fb); fb.connect(fg); fg.connect(this.out); fs.start();
+    const wh = c.createOscillator(), wg = c.createGain(); wh.frequency.value = 2380; wg.gain.value = .0012; wh.connect(wg); wg.connect(this.out); wh.start();
+    this.amb = [s, h1, h2, fs, wh];
   },
   stopAmb(){ if (this.amb){ this.amb.forEach(n => { try { n.stop(); } catch (e) {} }); this.amb = null; } },
 };
@@ -73,7 +83,7 @@ const VO = {q:[], busy:false, voices:[], cur:null,
     let u; try { u = new SpeechSynthesisUtterance(it.text); } catch (e) { return; }
     const v = this.pick(it.who); if (v) u.voice = v;
     u.rate = it.who === 'TD' ? 1.08 : 1.2; u.pitch = it.who === 'TD' ? .82 : 1.06; u.volume = Math.min(1, store.s.vol + .2);
-    const done = () => { if (this.cur !== u) return; this.cur = null; this.busy = false; setTimeout(() => this.pump(), 140); };
+    const done = () => { if (this.cur !== u) return; this.cur = null; this.busy = false; AU.tone('squelch2'); setTimeout(() => this.pump(), 140); };
     u.onend = done; u.onerror = done; this.cur = u; this.busy = true;
     setTimeout(done, 2500 + it.text.length * 80);
     AU.tone('squelch');
@@ -92,7 +102,8 @@ function modal(title, html, btns, bad){
   const first = b.querySelector('.btn'); if (first) first.focus();
 }
 function banner(text){ const el = document.createElement('div'); el.className = 'banner'; el.textContent = text; document.body.appendChild(el); setTimeout(() => el.remove(), 3300); }
-function applySkin(){ document.body.classList.toggle('legacy', store.s.skin === 'legacy' && unlocked()); PAL = null; }
+function applySkin(){ document.body.classList.toggle('legacy', store.s.skin === 'legacy' && unlocked()); document.body.classList.toggle('crtfx', store.s.crt !== false); PAL = null; }
+function applyLight(scn){ const L = store.s.light || 'AUTO', red = L === 'RED' || (L === 'AUTO' && scn && scn.theater !== 'TRN'); document.body.classList.toggle('light-red', !!scn && red); document.body.classList.toggle('light-day', !!scn && !red); }
 
 const UI = {screen:'title'};
 
@@ -232,6 +243,14 @@ function drawBase(ctx, v, M){
   for (const b of map.borders || []){ polyline(ctx, v, b.pts); ctx.setLineDash([2, 5]); ctx.strokeStyle = P.dim; ctx.globalAlpha = .6; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; const m = b.pts[1], q = proj(v, m[0], m[1]); ctx.fillStyle = P.faint; ctx.fillText(b.name, q[0] + 4, q[1] - 4); }
   for (const a of map.airways || []){ polyline(ctx, v, a.pts); ctx.setLineDash([6, 6]); ctx.strokeStyle = P.green; ctx.globalAlpha = .3; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = .65; const m = a.pts[0], n = a.pts[1], q = proj(v, (m[0] * 2 + n[0]) / 3, (m[1] * 2 + n[1]) / 3); ctx.fillStyle = P.green; ctx.fillText(a.name, q[0] + 4, q[1] - 4); ctx.globalAlpha = 1; }
   for (const c of map.corridors || []){ polyline(ctx, v, c.pts); ctx.strokeStyle = P.cyan; ctx.globalAlpha = .07; ctx.lineWidth = Math.max(6, 12 * v.s * (v.tilt ? .6 : 1)); ctx.stroke(); ctx.globalAlpha = .38; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); const m = c.pts[0], n = c.pts[1], q = proj(v, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2); ctx.fillStyle = P.cyan; ctx.globalAlpha = .75; ctx.fillText(c.name, q[0] + 8, q[1]); ctx.globalAlpha = 1; }
+  for (const z of M.acm || []){ // airspace control measures: weapons free zones, CAP boxes, base defense zones
+    const col = z.k === 'WFZ' ? P.red : z.k === 'CAP' ? P.cyan : P.green;
+    if (z.r) circleW(ctx, v, z.x, z.y, z.r); else { polyline(ctx, v, z.poly.concat([z.poly[0]])); }
+    ctx.setLineDash(z.k === 'WFZ' ? [10, 4, 2, 4] : [6, 5]); ctx.strokeStyle = col; ctx.globalAlpha = .5; ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+    if (z.k === 'WFZ'){ ctx.globalAlpha = .045; ctx.fillStyle = col; ctx.fill(); }
+    const lp = z.r ? {x:z.x - z.r * .7, y:z.y + z.r * .78} : {x:Math.min(...z.poly.map(p => p[0])) + 2, y:Math.max(...z.poly.map(p => p[1])) - 3}, lq = proj(v, lp.x, lp.y);
+    ctx.globalAlpha = .8; ctx.fillStyle = col; ctx.font = `600 10px ${P.mono}`; ctx.fillText(z.name, lq[0], lq[1] + 10); ctx.globalAlpha = 1;
+  }
   ctx.fillStyle = P.faint; ctx.font = `600 10px ${P.mono}`;
   for (const l of map.labels || []){ const q = proj(v, l[1], l[2]); ctx.fillText(l[0], q[0], q[1]); }
   const B = M.bat, utSeat = M.seat === 'THAAD' && M.thaad, RC = utSeat ? M.thaad : B, rings = utSeat ? [100, 200, 300, 400, 500, 600] : [25, 50, 100, 150], rT = rings[rings.length - 1];
@@ -245,6 +264,17 @@ function drawBase(ctx, v, M){
     const pts = [[nb.x, nb.y]]; for (let a = nb.ptl - 60; a <= nb.ptl + 60.1; a += 4){ const p = H.polar(a, 150, nb); pts.push([p.x, p.y]); } pts.push([nb.x, nb.y]);
     polyline(ctx, v, pts); ctx.setLineDash([4, 6]); ctx.strokeStyle = nb.on ? P.violet : P.faint; ctx.globalAlpha = .55; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     const q = proj(v, nb.x, nb.y); ctx.fillStyle = nb.on ? P.violet : P.faint; ctx.fillRect(q[0] - 3, q[1] - 3, 6, 6); ctx.fillText(nb.name + (nb.on ? '' : ' · OFF'), q[0] + 6, q[1] - 6);
+  }
+  for (const f of M.fus || []){ // other fire units of the battalion
+    if (f === M.fus[0]) continue;
+    const half = f.half || 60, R = H.RADAR.rmax * (f.rf || 1), on = f.alive && !f.emcon && !(f.reorient > 0), pts = [];
+    if (half >= 180){ for (let a = 0; a <= 360; a += 4){ const p = H.polar(a, R, f); pts.push([p.x, p.y]); } }
+    else { pts.push([f.x, f.y]); for (let a = f.ptl - half; a <= f.ptl + half + .1; a += 3){ const p = H.polar(a, R, f); pts.push([p.x, p.y]); } pts.push([f.x, f.y]); }
+    polyline(ctx, v, pts); ctx.fillStyle = on ? (P.legacy ? 'rgba(90,255,130,.025)' : 'rgba(82,205,224,.028)') : 'rgba(120,120,120,.02)'; ctx.fill();
+    ctx.setLineDash(f.ctrl === 'HOLD' ? [2, 5] : [7, 5]); ctx.strokeStyle = on ? P.cyan : P.faint; ctx.globalAlpha = .38; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    const fq = proj(v, f.x, f.y); ctx.fillStyle = !f.alive ? P.red : on ? P.cyan : P.dim; ctx.beginPath(); ctx.moveTo(fq[0], fq[1] - 7); ctx.lineTo(fq[0] + 6, fq[1] + 5); ctx.lineTo(fq[0] - 6, fq[1] + 5); ctx.closePath(); ctx.fill();
+    if (!f.alive){ ctx.strokeStyle = P.red; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(fq[0] - 8, fq[1] - 8); ctx.lineTo(fq[0] + 8, fq[1] + 8); ctx.moveTo(fq[0] + 8, fq[1] - 8); ctx.lineTo(fq[0] - 8, fq[1] + 8); ctx.stroke(); ctx.lineWidth = 1; }
+    ctx.fillStyle = f.sel ? P.violet : P.text; ctx.font = `600 10px ${P.mono}`; ctx.fillText(`${f.id} · ${f.name}${f.ltamds ? ' · LTAMDS' : ''}${f.emcon ? ' · SILENT' : ''}${f.ctrl === 'HOLD' ? ' · HOLD' : ''}`, fq[0] + 9, fq[1] + 12); ctx.font = `10px ${P.mono}`;
   }
   const TH = M.thaad;
   if (TH){
@@ -263,7 +293,7 @@ function drawBase(ctx, v, M){
   }
   if (M.showFan !== false){
     const ptl = M.ptlPreview != null ? M.ptlPreview : B.ptl;
-    const half = B.half || 60, pts = [[B.x, B.y]]; for (let a = ptl - half; a <= ptl + half + .01; a += 2){ const p = H.polar(a, H.RADAR.rmax, B); pts.push([p.x, p.y]); } pts.push([B.x, B.y]);
+    const half = B.half || 60, RR = H.RADAR.rmax * (B.rf || 1), pts = half >= 180 ? [] : [[B.x, B.y]]; for (let a = ptl - half; a <= ptl + half + .01; a += 2){ const p = H.polar(a, RR, B); pts.push([p.x, p.y]); } if (half < 180) pts.push([B.x, B.y]);
     polyline(ctx, v, pts);
     const q0 = proj(v, B.x, B.y), gr = ctx.createRadialGradient(q0[0], q0[1], 0, q0[0], q0[1], H.RADAR.rmax * v.s);
     const on = B.on !== false, cc = P.legacy ? '90,255,130' : '82,205,224';
@@ -273,8 +303,8 @@ function drawBase(ctx, v, M){
     ctx.strokeStyle = on ? P.cyan : P.faint; ctx.globalAlpha = .5; ctx.stroke(); ctx.globalAlpha = 1;
     const low = lowLine(map, M.mapKey, B.x, B.y, ptl, half); polyline(ctx, v, low); ctx.setLineDash([3, 4]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .6; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     const lp = low[Math.floor(low.length * .8)], lq = proj(v, lp[0], lp[1]); ctx.fillStyle = P.amber; ctx.globalAlpha = .75; ctx.fillText('100 m LIMIT', lq[0] + 4, lq[1] - 3); ctx.globalAlpha = 1;
-    const pe = H.polar(ptl, H.RADAR.rmax, B); polyline(ctx, v, [[B.x, B.y], [pe.x, pe.y]]); ctx.setLineDash([10, 6]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .55; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
-    const pq = proj(v, H.polar(ptl, 130, B).x, H.polar(ptl, 130, B).y); ctx.fillStyle = P.amber; ctx.font = `600 11px ${P.mono}`; ctx.fillText('PTL ' + pad(Math.round(ptl) % 360, 3), pq[0] + 6, pq[1]); ctx.font = `10px ${P.mono}`; ctx.globalAlpha = 1; }
+    if (half < 180){ const pe = H.polar(ptl, H.RADAR.rmax, B); polyline(ctx, v, [[B.x, B.y], [pe.x, pe.y]]); ctx.setLineDash([10, 6]); ctx.strokeStyle = P.amber; ctx.globalAlpha = .55; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    const pq = proj(v, H.polar(ptl, 130, B).x, H.polar(ptl, 130, B).y); ctx.fillStyle = P.amber; ctx.font = `600 11px ${P.mono}`; ctx.fillText('PTL ' + pad(Math.round(ptl) % 360, 3), pq[0] + 6, pq[1]); ctx.font = `10px ${P.mono}`; ctx.globalAlpha = 1; } }
   }
   if (M.axis){ for (const a of M.axis){ const p1 = H.polar(a, 120, B), p2 = H.polar(a, 165, B); polyline(ctx, v, [[p2.x, p2.y], [p1.x, p1.y]]); ctx.strokeStyle = P.red; ctx.lineWidth = 2.5; ctx.stroke(); ctx.lineWidth = 1; const q = proj(v, p1.x, p1.y); ctx.fillStyle = P.red; ctx.fillText('THREAT ' + pad(a, 3), q[0] + 4, q[1]); } }
   if (M.sites) M.sites.forEach((s, i) => { const q = proj(v, s.x, s.y); ctx.strokeStyle = i === M.siteSel ? P.amber : P.dim; ctx.beginPath(); ctx.arc(q[0], q[1], 7, 0, 7); ctx.stroke(); ctx.fillStyle = i === M.siteSel ? P.amber : P.dim; ctx.fillText(String.fromCharCode(65 + i), q[0] - 3, q[1] + 3.5); });
@@ -291,7 +321,8 @@ function drawBase(ctx, v, M){
   const q = proj(v, B.x, B.y);
   for (const L of M.launchers || []){ const lq = proj(v, L.x, L.y); ctx.fillStyle = L.dead ? P.red : L.type === 'THAAD' ? P.amber : P.dim; ctx.fillRect(lq[0] - 2, lq[1] - 2, 4, 4); }
   ctx.fillStyle = B.alive === false ? P.red : (B.on === false ? P.dim : P.cyan); ctx.beginPath(); ctx.moveTo(q[0], q[1] - 7); ctx.lineTo(q[0] + 6, q[1] + 5); ctx.lineTo(q[0] - 6, q[1] + 5); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = P.text; ctx.font = `600 10px ${P.mono}`; ctx.fillText(M.bty || '', q[0] + 9, q[1] + 12);
+  ctx.fillStyle = M.fus && M.fus[0] && M.fus[0].sel ? P.violet : P.text; ctx.font = `600 10px ${P.mono}`; ctx.fillText(M.bty || '', q[0] + 9, q[1] + 12);
+  if (B.alive === false){ ctx.strokeStyle = P.red; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(q[0] - 8, q[1] - 8); ctx.lineTo(q[0] + 8, q[1] + 8); ctx.moveTo(q[0] + 8, q[1] - 8); ctx.lineTo(q[0] - 8, q[1] + 8); ctx.stroke(); ctx.lineWidth = 1; }
   for (const sc of M.scars || []){ const s = proj(v, sc.x, sc.y); ctx.strokeStyle = sc.harmless ? P.faint : P.red; ctx.globalAlpha = .7; ctx.beginPath(); ctx.arc(s[0], s[1], 3, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
   ctx.restore();
 }
@@ -357,6 +388,11 @@ function drawLive(ctx, v, M, now, glow){
     }
   }
   const hits = [], raw = false, fill = M.sym === '2525', tl = [];
+  for (const sr of M.sirens || []){ // civil defense sirens: towns under a predicted impact
+    const q = proj(v, sr.x, sr.y), ph = (now / 900) % 1;
+    for (let k = 0; k < 2; k++){ const f = (ph + k * .5) % 1; ctx.beginPath(); ctx.arc(q[0], q[1], 8 + f * 26, 0, 7); ctx.strokeStyle = P.red; ctx.globalAlpha = (1 - f) * .55; ctx.lineWidth = 1.4; ctx.stroke(); }
+    ctx.lineWidth = 1; ctx.globalAlpha = .9; ctx.fillStyle = P.red; ctx.font = `600 9.5px ${P.mono}`; ctx.fillText('SIRENS', q[0] - 16, q[1] - 14); ctx.globalAlpha = 1;
+  }
   for (const m of M.ms || []){ // flyout lines to the predicted intercept point
     if (!m.aim || m.owner === 'nb') continue;
     const q = proj(v, m.x, m.y, m.z), a = proj(v, m.aim.x, m.aim.y, m.aim.z), c = m.owner === 'cuas' ? P.green : m.tier === 'UT' ? P.amber : P.text;
@@ -368,6 +404,15 @@ function drawLive(ctx, v, M, now, glow){
     const k = e.trk, col = idCol(k.id, P), q = proj(v, e.x, e.y, e.z);
     if (q[0] < -40 || q[0] > v.W + 40 || q[1] < -40 || q[1] > v.H + 40) continue;
     hits.push({uid:e.uid, x:q[0], y:q[1]});
+    if (e.dual){ // a second track number on the same aircraft: legacy data link correlation failure
+      const dq = proj(v, e.dual.x, e.dual.y, e.z), r2 = 6.5; hits.push({uid:e.uid, x:dq[0], y:dq[1]});
+      ctx.save(); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.globalAlpha = .7; ctx.setLineDash([3, 2]); ctx.lineWidth = 1.5; ctx.beginPath();
+      if (e.ball){ ctx.moveTo(dq[0], dq[1] - r2); ctx.lineTo(dq[0] + r2, dq[1]); ctx.lineTo(dq[0], dq[1] + r2); ctx.lineTo(dq[0] - r2, dq[1]); ctx.closePath(); }
+      else if (k.id === 'HOS' || k.id === 'SUS'){ ctx.moveTo(dq[0] - r2, dq[1] + 1); ctx.lineTo(dq[0], dq[1] - r2); ctx.lineTo(dq[0] + r2, dq[1] + 1); }
+      else if (k.id === 'FRD') ctx.arc(dq[0], dq[1] + 1, r2, Math.PI, 0); else ctx.rect(dq[0] - r2, dq[1] - r2, r2 * 2, r2 + 1);
+      ctx.stroke(); ctx.setLineDash([]); const dl = proj(v, e.dual.x + e.vx * (e.ball ? 15 : 60), e.dual.y + e.vy * (e.ball ? 15 : 60), Math.max(0, e.z + (e.vz || 0) * (e.ball ? 15 : 60))); ctx.beginPath(); ctx.moveTo(dq[0], dq[1]); ctx.lineTo(dl[0], dl[1]); ctx.globalAlpha = .4; ctx.stroke();
+      ctx.globalAlpha = .8; ctx.font = `600 10px ${P.mono}`; ctx.fillText(e.dual.num, dq[0] + 8, dq[1] + (dq[1] > q[1] ? 12 : -5)); ctx.restore();
+    }
     if (raw && e.uid !== M.hooked){ ctx.fillStyle = P.dim; ctx.font = `9px ${P.mono}`; ctx.fillText(k.num, q[0] + 6, q[1] - 4); continue; }
     if (e.released){ // a cluster warhead after release: one track becomes a cloud of returns
       ctx.fillStyle = P.red; for (let i = 0; i < 14; i++){ const an = (e.uid * 37 + i * 137) % 360 * Math.PI / 180, rr = 2 + ((e.uid * 13 + i * 71) % 10) * (1.2 + .25 * Math.max(0, 20 - e.z)); ctx.globalAlpha = .55 + .4 * Math.random(); ctx.fillRect(q[0] + Math.cos(an) * rr - 1, q[1] + Math.sin(an) * rr - 1, 2, 2); }
@@ -416,6 +461,8 @@ function drawLive(ctx, v, M, now, glow){
     const q = proj(v, fx.x, fx.y, fx.z || 0), col = fx.k === 'kill' ? '#fff' : fx.k === 'impact' || fx.k === 'bloom' || fx.k === 'cluster' ? (fx.harmless ? P.dim : P.red) : fx.k === 'launch' || fx.k === 'ka' ? P.amber : P.dim;
     if (fx.k === 'cluster'){ ctx.fillStyle = P.red; for (let i = 0; i < 24; i++){ const an = i / 24 * Math.PI * 2 + i, rr = 3 + age * (10 + (i % 5) * 6); ctx.globalAlpha = (1 - age) * .9; ctx.fillRect(q[0] + Math.cos(an) * rr - 1, q[1] + Math.sin(an) * rr - 1, 2, 2); } ctx.globalAlpha = 1; continue; }
     if (fx.k === 'bloom'){ const R = (fx.r || 5) * v.s; gl(col, 16); ctx.strokeStyle = col; ctx.globalAlpha = (1 - age) * .9; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q[0], q[1], R * (.3 + .7 * age), 0, 7); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = col; for (let i = 0; i < 30; i++){ const an = i * 2.39996, rr = R * Math.sqrt((i + .5) / 30); ctx.globalAlpha = (1 - age) * .8; ctx.fillRect(q[0] + Math.cos(an) * rr - 1.5, q[1] + Math.sin(an) * rr - 1.5, 3, 3); } ng(); ctx.globalAlpha = 1; continue; }
+    if (fx.k === 'debris'){ ctx.fillStyle = fx.bad ? P.red : P.amber; for (let i = 0; i < 14; i++){ const an = i * 2.4, rr = 2 + age * (6 + (i % 4) * 4); ctx.globalAlpha = (1 - age) * .8; ctx.fillRect(q[0] + Math.cos(an) * rr - 1, q[1] + Math.sin(an) * rr * .6 + age * 10 - 1, 2, 2); }
+      if (fx.bad){ ctx.globalAlpha = 1 - age; ctx.font = `600 9.5px ${P.mono}`; ctx.fillText('DEBRIS', q[0] + 10, q[1] + 4); } ctx.globalAlpha = 1; continue; }
     if (fx.k === 'ka'){ ctx.strokeStyle = col; ctx.globalAlpha = 1 - age; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(q[0], q[1], 9 + age * 8, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = col; ctx.font = `600 10px ${P.mono}`; ctx.fillText('KILL ASSESSMENT UNCERTAIN', q[0] + 14, q[1] + 16); ctx.globalAlpha = 1; continue; }
     gl(col, 14); ctx.strokeStyle = col; ctx.globalAlpha = 1 - age; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q[0], q[1], 3 + age * (fx.k === 'impact' ? 26 : 16), 0, 7); ctx.stroke(); ctx.lineWidth = 1;
     if (fx.k === 'kill' || fx.k === 'impact'){ ctx.fillStyle = col; ctx.globalAlpha = (1 - age) * .7; ctx.beginPath(); ctx.arc(q[0], q[1], 5 * (1 - age) + 1, 0, 7); ctx.fill(); }
@@ -463,10 +510,12 @@ function openMenu(tab){
   const cb = $('#certBadge'); cb.textContent = store.p.cert ? 'CERTIFIED · TABLE VIII' : 'NOT CERTIFIED'; cb.classList.toggle('cert', store.p.cert);
   $$('#menuTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === menuTab));
   const body = $('#menuBody');
+  if (menuTab === 'EDIT'){ openEditor(); return; }
   if (menuTab === 'CAMP'){ body.innerHTML = campMenuHtml(); body.querySelectorAll('[data-camp]').forEach(b => b.onclick = () => campStart(b.dataset.camp, b.dataset.new === '1')); return; }
   const list = SCN.filter(s => s.theater === menuTab);
   const intro = menuTab === 'TRN' ? 'Ten crew drill tables at McGregor Range. Each must be passed to open the next. Table VIII certifies your crew, unlocks the campaign and the legacy console. Tables IX and X teach the THAAD upper tier and open after Table V.'
     : menuTab === 'ME' ? 'Gulf and Levant, 2019 to 2026. Ballistic salvos from Iran, drone swarms, cluster warheads and a THAAD upper tier. The 2025 and 2026 battles are calibrated to the record: perfect play still loses some.'
+    : menuTab === 'BN' ? 'Move up to the battalion fire direction centre. Four batteries, one picture, and a choice: fight the legacy way, each battery on its own radar, or under IBCS with one composite picture and the best shooter for every threat. Friendly fighters share your sky.'
     : 'NATO’s eastern flank and Ukraine. Kinzhal and Kalibr, decoys and jammers, anti-radiation missiles and recon drones that call in Iskanders.';
   body.innerHTML = `<p class="mintro">${intro}</p><div class="scn-grid">${list.map((s, i) => {
     const locked = s.table && s.table > 1 && !store.p.tables[tableReq(s.table)] && !store.s.unlockAll;
@@ -474,7 +523,7 @@ function openMenu(tab){
     const passed = s.table && store.p.tables[s.table];
     return `<button type="button" class="scn${locked ? ' locked' : ''}" data-id="${s.id}" ${locked ? 'aria-disabled="true"' : ''}>
       <span class="st${passed ? ' pass' : ''}">${passed ? 'PASSED' : best != null ? 'BEST ' + best : locked ? 'LOCKED' : ''}</span>
-      <span class="tag">${s.table ? 'TABLE ' + ROMAN[s.table] : s.endgame ? 'ENDGAME · SEEDED' : THEATERS[s.theater].toUpperCase()}</span>
+      <span class="tag">${s.table ? 'TABLE ' + ROMAN[s.table] : s.endgame ? 'ENDGAME · SEEDED' : s.bn ? 'BATTALION · ' + s.bn.units.length + ' BATTERIES' : THEATERS[s.theater].toUpperCase()}</span>
       <span class="n">${esc(s.table ? s.name.split('· ')[1] : s.name)}</span>
       <span class="pl">${esc(s.place)}</span>
       ${s.inspired ? `<span class="in">${esc(s.inspired)}</span>` : ''}
@@ -487,10 +536,12 @@ let BR = null;
 function randSeed(){ return 100000 + Math.floor(Math.random() * 899999); }
 function openBrief(scn, camp){
   AU.init();
-  BR = {scn, site:0, ptl:scn.ptl, mode:scn.mode, doctrine:{TBM:'RIPPLE', AIR:'SLS', UAV:scn.cuas ? 'CUAS' : 'SINGLE', THAAD:'SLS', LAYER:'WAIT'}, seat:scn.seat || 'PAT', seed:randSeed(), camp:camp || null, view:null};
+  BR = {scn, site:0, ptl:scn.ptl, mode:scn.mode, doctrine:{TBM:'RIPPLE', AIR:'SLS', UAV:scn.cuas ? 'CUAS' : 'SINGLE', THAAD:'SLS', LAYER:'WAIT'}, seat:scn.seat || 'PAT', seed:randSeed(), camp:camp || null, view:null,
+    arch:scn.bn ? (store.s.arch || scn.bn.arch) : null, ptls:scn.bn ? scn.bn.units.map(u => u.ptl) : null, unit:0};
   show('brief');
   const W = s => s.split(' ');
-  const ld = scn.launchers.map((L, i) => `<span>LS${i + 1} ${L[0] === 'MSE' ? L[1] + '× MSE' : L[0] === 'GEMT' ? L[2] + '× GEM-T' : L[1] + '× MSE + ' + L[2] + '× GEM-T'}</span>`).join('') + `<span>RESERVE ${scn.reserve.MSE} MSE · ${scn.reserve.GEMT} GEM-T</span>`
+  const lsTxt = L => L[0] === 'MSE' ? L[1] + '× MSE' : L[0] === 'GEMT' ? L[2] + '× GEM-T' : L[1] + '× MSE + ' + L[2] + '× GEM-T';
+  const ld = scn.bn ? scn.bn.units.map((u, i) => `<span>${u.id} ${esc(u.name)} · ${(i ? u.launchers : scn.launchers).map(lsTxt).join(' · ')}</span>`).join('') + `<span>BN RESERVE ${scn.reserve.MSE} MSE · ${scn.reserve.GEMT} GEM-T</span>` + (scn.thaad ? `<span class="ut">THAAD ${scn.thaad.launchers || 6} LAUNCHERS × ${scn.thaad.rounds || 8} · AI CREW</span>` : '') + (scn.cuas || []).map(c => `<span class="cu">${esc(c.name)} · ${c.type === 'GUN' ? 'GUN' : c.n + ' COYOTE'}</span>`).join('') : scn.launchers.map((L, i) => `<span>LS${i + 1} ${L[0] === 'MSE' ? L[1] + '× MSE' : L[0] === 'GEMT' ? L[2] + '× GEM-T' : L[1] + '× MSE + ' + L[2] + '× GEM-T'}</span>`).join('') + `<span>RESERVE ${scn.reserve.MSE} MSE · ${scn.reserve.GEMT} GEM-T</span>`
     + (scn.thaad ? `<span class="ut">THAAD ${scn.thaad.launchers || 6} LAUNCHERS × ${scn.thaad.rounds || 8}${scn.reserve.THAAD ? ' · RESERVE ' + scn.reserve.THAAD : ''}</span>` : '') + (scn.cuas || []).map(c => `<span class="cu">${esc(c.name)} · ${c.type === 'GUN' ? 'GUN' : c.n + ' COYOTE'}</span>`).join('');
   const redOn = store.s.red !== 'scripted' && !scn.tutorial, redPlan = redOn ? H.planRed({scn}, store.d.red || {}) : [];
   const nb = (store.d.red && store.d.red.battles) || 0;
@@ -504,7 +555,7 @@ function openBrief(scn, camp){
   $('#briefBody').innerHTML = `<div class="brief-wrap">
    <div>
      <button class="btn sm" type="button" id="bBack">← Back</button>
-     <div class="eyebrow" style="margin-top:14px">${scn.table ? 'CREW DRILL · TABLE ' + ROMAN[scn.table] : THEATERS[scn.theater].toUpperCase() + ' · ' + esc(scn.bty)}</div>
+     <div class="eyebrow" style="margin-top:14px">${scn.table ? 'CREW DRILL · TABLE ' + ROMAN[scn.table] : scn.custom ? 'EDITOR · ' + esc(scn.bty) : THEATERS[scn.theater].toUpperCase() + ' · ' + esc(scn.bty)}</div>
      <h2>${esc(scn.table ? scn.name.split('· ')[1] : scn.name)}</h2>
      <div class="pl">${esc(scn.place)}</div>
      ${scn.inspired ? `<div class="insp">${esc(scn.inspired)}</div>` : ''}
@@ -521,8 +572,9 @@ function openBrief(scn, camp){
    </div>
    <div>
      <h3 style="margin-top:0">Emplacement</h3>
-     ${lockNote}<div class="sites" id="bSites" ${locked ? 'hidden' : ''}>${scn.sites.map((s, i) => `<button type="button" class="tbtn${i === 0 ? ' on' : ''}" data-i="${i}">${esc(s.name)}</button>`).join('')}</div>
-     <div class="mapbox" id="bMapBox"><canvas id="bMap"></canvas><div class="maphint">${locked ? 'EMPLACEMENT SET BY RANGE CONTROL' : 'DRAG TO SET PTL'}</div></div>
+     ${lockNote}${scn.bn ? `<div class="opts" style="margin-bottom:10px"><label>ARCHITECTURE</label><div><div class="seg" id="bArch">${['LEGACY','IBCS'].map(a => `<button type="button" data-v="${a}" class="${a === BR.arch ? 'on' : ''}">${a}</button>`).join('')}</div><div class="eyebrow" id="bArchNote" style="letter-spacing:.04em;margin-top:6px"></div></div></div>
+       <div class="sites" id="bUnits">${scn.bn.units.map((u, i) => `<button type="button" class="tbtn${i === 0 ? ' on' : ''}" data-u="${i}">${u.id} · ${esc(u.name)}</button>`).join('')}</div>` : ''}<div class="sites" id="bSites" ${locked || scn.bn ? 'hidden' : ''}>${scn.sites.map((s, i) => `<button type="button" class="tbtn${i === 0 ? ' on' : ''}" data-i="${i}">${esc(s.name)}</button>`).join('')}</div>
+     <div class="mapbox" id="bMapBox"><canvas id="bMap"></canvas><div class="maphint">${locked ? 'EMPLACEMENT SET BY RANGE CONTROL' : scn.bn ? 'PICK A BATTERY, DRAG TO SET ITS PTL' : 'DRAG TO SET PTL'}</div></div>
      <div class="cov" id="bCov"></div>
      ${tutNote}
      <h3>Crew settings</h3>
@@ -531,15 +583,21 @@ function openBrief(scn, camp){
        <label>TBM DOCTRINE</label><div class="seg" data-doc="TBM">${['SINGLE','RIPPLE','SLS'].map(m => `<button type="button" data-v="${m}" class="${m === 'RIPPLE' ? 'on' : ''}">${m === 'SLS' ? 'SHOOT-LOOK-SHOOT' : m}</button>`).join('')}</div>
        <label>AIR DOCTRINE</label><div class="seg" data-doc="AIR">${['SINGLE','RIPPLE','SLS'].map(m => `<button type="button" data-v="${m}" class="${m === 'SLS' ? 'on' : ''}">${m === 'SLS' ? 'SHOOT-LOOK-SHOOT' : m}</button>`).join('')}</div>
        <label>DRONE DOCTRINE</label><div class="seg" data-doc="UAV">${['SINGLE','RIPPLE','SLS'].concat(scn.cuas ? ['CUAS'] : []).map(m => `<button type="button" data-v="${m}" class="${m === BR.doctrine.UAV ? 'on' : ''}">${m === 'SLS' ? 'SHOOT-LOOK-SHOOT' : m === 'CUAS' ? 'LEAVE TO C-UAS' : m}</button>`).join('')}</div>
-       ${scn.thaad ? `<label>SEAT</label><div class="seg" id="bSeat">${[['PAT','PATRIOT ECS'],['THAAD','THAAD FIRE CONTROL']].map(x => `<button type="button" data-v="${x[0]}" class="${x[0] === BR.seat ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
-       <label>THAAD DOCTRINE</label><div class="seg" data-doc="THAAD">${['SINGLE','RIPPLE','SLS'].map(m => `<button type="button" data-v="${m}" class="${m === 'SLS' ? 'on' : ''}">${m === 'SLS' ? 'SHOOT-LOOK-SHOOT' : m}</button>`).join('')}</div>
-       <label>LAYER</label><div class="seg" data-doc="LAYER">${[['WAIT','WAIT FOR THAAD'],['CONC','CONCURRENT']].map(x => `<button type="button" data-v="${x[0]}" class="${x[0] === 'WAIT' ? 'on' : ''}">${x[1]}</button>`).join('')}</div>` : ''}
+       ${scn.thaad && !scn.bn ? `<label>SEAT</label><div class="seg" id="bSeat">${[['PAT','PATRIOT ECS'],['THAAD','THAAD FIRE CONTROL']].map(x => `<button type="button" data-v="${x[0]}" class="${x[0] === BR.seat ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
+       <label>THAAD DOCTRINE</label><div class="seg" data-doc="THAAD">${['SINGLE','RIPPLE','SLS'].map(m => `<button type="button" data-v="${m}" class="${m === 'SLS' ? 'on' : ''}">${m === 'SLS' ? 'SHOOT-LOOK-SHOOT' : m}</button>`).join('')}</div>` : ''}
+       ${scn.thaad ? `<label>LAYER</label><div class="seg" data-doc="LAYER">${[['WAIT','WAIT FOR THAAD'],['CONC','CONCURRENT']].map(x => `<button type="button" data-v="${x[0]}" class="${x[0] === 'WAIT' ? 'on' : ''}">${x[1]}</button>`).join('')}</div>` : ''}
        <label>TCA</label><div><div class="seg" id="bCrew">${H.CREW.map(c => `<button type="button" data-v="${c.id}" class="${c.id === BR.tca ? 'on' : ''}">${esc(c.name)}</button>`).join('')}</div><div class="eyebrow" id="bCrewNote" style="letter-spacing:.04em;margin-top:6px"></div></div>
        <label>SEED</label><div><input class="seedin" id="bSeed" type="text" inputmode="numeric" value="${BR.seed}" aria-label="Raid seed"> <span class="eyebrow" style="letter-spacing:.06em">Same seed, same raid</span></div>
      </div>
      <div class="go"><button class="btn primary big" type="button" id="bGo">Take the watch</button></div>
    </div></div>`;
   $('#bBack').onclick = () => camp ? campScreen() : openMenu();
+  if (scn.bn){
+    const archNote = () => { $('#bArchNote').textContent = BR.arch === 'IBCS' ? 'One composite picture from every radar. Any launcher fires on any sensor’s track; the system picks the best shooter. Alpha and Charlie field LTAMDS 360° radars.' : 'Each battery fights from its own MPQ-65 and hears about its neighbours’ shots late over Link 16. Expect double shots, double track numbers and swaps.'; };
+    archNote();
+    $('#bArch').querySelectorAll('button').forEach(b => b.onclick = () => { BR.arch = b.dataset.v; store.s.arch = BR.arch; store.save(); $('#bArch').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); archNote(); briefDraw(); });
+    $('#bUnits').querySelectorAll('button').forEach(b => b.onclick = () => { BR.unit = +b.dataset.u; $('#bUnits').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); briefDraw(); });
+  }
   $('#bSites').querySelectorAll('button').forEach(b => b.onclick = () => { BR.site = +b.dataset.i; $('#bSites').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); briefDraw(); });
   $('#bMode').querySelectorAll('button').forEach(b => b.onclick = () => { BR.mode = b.dataset.v; $('#bMode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
   if ($('#bSeat')) $('#bSeat').querySelectorAll('button').forEach(b => b.onclick = () => { BR.seat = b.dataset.v; $('#bSeat').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); briefDraw(); });
@@ -549,15 +607,35 @@ function openBrief(scn, camp){
   $('#bCrew').querySelectorAll('button').forEach(b => b.onclick = () => { BR.tca = b.dataset.v; store.s.tca = BR.tca; store.save(); $('#bCrew').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); crewNote(); });
   $('#bGo').onclick = () => { const sv = parseInt($('#bSeed').value, 10); if (sv > 0) BR.seed = sv; startBattle(); };
   const cv = $('#bMap');
-  const setFrom = ev => { const r = cv.getBoundingClientRect(), w = unproj(BR.view, ev.clientX - r.left, ev.clientY - r.top), s = scn.sites[BR.site]; BR.ptl = Math.round(H.brgOf(w.x - s.x, w.y - s.y)); briefDraw(); };
+  const setFrom = ev => { const r = cv.getBoundingClientRect(), w = unproj(BR.view, ev.clientX - r.left, ev.clientY - r.top);
+    if (scn.bn){ const u = scn.bn.units[BR.unit]; if (BR.arch === 'IBCS' && u.ltamds) return; BR.ptls[BR.unit] = Math.round(H.brgOf(w.x - u.x, w.y - u.y)); if (BR.unit === 0) BR.ptl = BR.ptls[0]; briefDraw(); return; }
+    const s = scn.sites[BR.site]; BR.ptl = Math.round(H.brgOf(w.x - s.x, w.y - s.y)); briefDraw(); };
   let drag = false;
   cv.onpointerdown = ev => { if (scn.lockEmplace) return; drag = true; cv.setPointerCapture(ev.pointerId); setFrom(ev); };
   cv.onpointermove = ev => { if (drag) setFrom(ev); };
   cv.onpointerup = cv.onpointercancel = () => { drag = false; };
   requestAnimationFrame(briefDraw);
 }
+function briefDrawBn(){
+  const scn = BR.scn, cv = $('#bMap'), {W, H:Hh, dpr} = sizeCanvas(cv), ctx = cv.getContext('2d'), U = scn.bn.units;
+  const cov = H.coverageBn(scn, BR.ptls, BR.arch), xs = U.map(u => u.x).concat(scn.assets.map(a => a.x)), ys = U.map(u => u.y).concat(scn.assets.map(a => a.y));
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2, ext = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) / 2 + 40;
+  BR.view = {cx, cy, s:Math.min(W, Hh) / 2 / Math.max(80, ext), W, H:Hh, tilt:false};
+  const fus = U.map((u, i) => ({...u, ptl:BR.ptls[i], half:BR.arch === 'IBCS' && u.ltamds ? 180 : 60, rf:BR.arch === 'IBCS' && u.ltamds ? 1.15 : 1, ltamds:BR.arch === 'IBCS' && u.ltamds, alive:true, ctrl:'AUTO', sel:i === BR.unit}));
+  const covMap = {}; cov.assets.forEach(x => covMap[x.a.id] = x.ok);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawScope(ctx, BR.view, {mapKey:scn.map, bat:{x:U[0].x, y:U[0].y, ptl:BR.ptls[0], half:fus[0].half, rf:fus[0].rf, on:true}, ptlPreview:BR.ptls[0], fus, acm:scn.acm, assets:scn.assets.map(a => ({...a, hpMax:a.hp, hp:a.hp})), ents:[], neighbors:[], axis:null, cov:covMap, labelsAlways:true, bty:`${U[0].id} · ${U[0].name}`,
+    thaad:scn.thaad ? {...scn.thaad, half:scn.thaad.half || 60, alive:true} : null, cuas:scn.cuas || [], seat:'BN'}, 0);
+  for (const a of scn.axis || []){ const c = {x:cx, y:cy}, p1 = H.polar(a, ext * .9, c), p2 = H.polar(a, ext * 1.25, c), q1 = proj(BR.view, p1.x, p1.y), q2 = proj(BR.view, p2.x, p2.y); ctx.strokeStyle = pal().red; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(q2[0], q2[1]); ctx.lineTo(q1[0], q1[1]); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = pal().red; ctx.font = `10px ${pal().mono}`; ctx.fillText('THREAT ' + pad(a, 3), q1[0] + 4, q1[1]); }
+  $('#bDal').innerHTML = cov.assets.map(c => `<tr><td class="p">${c.a.pri}</td><td>${esc(c.a.name)}</td><td class="p">${c.n} BATTER${c.n === 1 ? 'Y' : 'IES'} COVER</td></tr>`).join('');
+  const lines = [`<span class="${cov.assets.every(x => x.ok) ? 'ok' : 'no'}">ASSETS COVERED ${cov.assets.filter(x => x.ok).length}/${cov.assets.length}</span>`];
+  cov.axis.forEach(x => lines.push(`<span class="${x.ok ? (x.reach < 30 ? 'warn' : 'ok') : 'no'}">THREAT AXIS ${pad(x.b, 3)}° ${x.ok ? 'COVERED' : 'NO BATTERY FACES IT'} · BEST LOW-ALT REACH ${Math.round(x.reach)} km</span>`));
+  const u = U[BR.unit]; lines.push(`<span>${u.id} · ${esc(u.name)} · ${BR.arch === 'IBCS' && u.ltamds ? 'LTAMDS · 360°' : 'PTL ' + pad(BR.ptls[BR.unit], 3) + '°'}</span>`);
+  $('#bCov').innerHTML = lines.join('');
+}
 function briefDraw(){
   if (!BR || UI.screen !== 'brief') return;
+  if (BR.scn.bn) return briefDrawBn();
   const scn = BR.scn, cv = $('#bMap'), {W, H:Hh, dpr} = sizeCanvas(cv), ctx = cv.getContext('2d'), s = scn.sites[BR.site];
   const ext = Math.max(60, ...scn.assets.map(a => Math.hypot(a.x - s.x, a.y - s.y) * 1.35));
   const scale = Math.min(W, Hh) / 2 / Math.min(175, Math.max(ext, 120));
@@ -578,7 +656,7 @@ function briefDraw(){
 let S = null, B = null, rafId = 0;
 function startBattle(){
   const scn = BR.scn;
-  const o = {seed:BR.seed, site:BR.site, ptl:BR.ptl, mode:BR.mode, doctrine:{...BR.doctrine}, difficulty:store.s.diff, seat:BR.seat,
+  const o = {seed:BR.seed, site:BR.site, ptl:BR.ptls ? BR.ptls[0] : BR.ptl, mode:BR.mode, doctrine:{...BR.doctrine}, difficulty:store.s.diff, seat:BR.seat, arch:BR.arch || undefined, ptls:BR.ptls ? BR.ptls.slice() : undefined,
     red:store.s.red !== 'scripted' && !scn.tutorial ? (store.d.red || {}) : null,
     tca:{id:BR.tca || store.s.tca, fatigue:BR.camp ? ((BR.camp.fatigue || {})[BR.tca] || 0) : 0, delegate:{...(store.s.delegate || {})}}};
   if (BR.camp){ o.stock = {...BR.camp.stock}; o.xp = BR.camp.xp; }
@@ -586,7 +664,14 @@ function startBattle(){
 }
 function launchBattle(sim, ctx){
   S = sim; const scn = S.scn;
-  B = {view:{cx:S.bat.x, cy:S.bat.y, s:2.2, W:100, H:100, tilt:false}, hooked:null, hits:[], hist:{}, trails:{}, fx:[], scars:[], speed:store.s.speed || 1, acc:0, last:performance.now(), logN:0, panelT:0, wpn:'AUTO', cardFor:null, coach:null, sheet:'', toastT:0, camp:ctx.camp, brief:ctx.brief, idLog:{}, rewound:S.rewoundAt != null, page:'trk', h:{}, video:store.s.video === 'MIX' ? 'MIX' : 'SYN', stunUntil:0};
+  B = {view:{cx:S.bat.x, cy:S.bat.y, s:2.2, W:100, H:100, tilt:false}, hooked:null, hits:[], hist:{}, trails:{}, fx:[], scars:[], speed:store.s.speed || 1, acc:0, last:performance.now(), logN:0, panelT:0, wpn:'AUTO', cardFor:null, coach:null, sheet:'', toastT:0, camp:ctx.camp, brief:ctx.brief, idLog:{}, rewound:S.rewoundAt != null, page:'trk', h:{}, video:store.s.video === 'MIX' ? 'MIX' : 'SYN', stunUntil:0,
+    shooter:'BEST', spill:0, sirens:[], sirenSet:'', sirenT:0, alertKey:'', netN:0, netT:0};
+  applyLight(scn); applySkin();
+  const bnOn = !!S.bn; ['#sEmcon', '#sPtl'].forEach(k => $(k).hidden = bnOn);
+  $('#sArch').hidden = !bnOn; if (bnOn){ $('#sArch').textContent = S.bn.arch; $('#sArch').classList.toggle('ibcs', S.bn.arch === 'IBCS'); }
+  const ck = $('#pageKeys [data-pg="crew"]'); if (ck) ck.innerHTML = bnOn ? 'BOARD<small>F4</small>' : 'CREW<small>F4</small>';
+  const cph = $('.pg[data-page="crew"] .ph span'); if (cph) cph.textContent = bnOn ? 'BATTALION STATUS BOARD' : 'CREW · MANSTATION 2';
+  $('.plate').textContent = bnOn ? `BATTALION FIRE DIRECTION CENTRE · ${S.bn.arch === 'IBCS' ? 'IBCS ENGAGEMENT OPERATIONS CENTER' : 'AN/MSQ-132 · LINK 16'}` : 'AN/MSQ-132 · MAN STATION 1 · SITUATION DISPLAY';
   $('#zVid').textContent = B.video;
   B.wpn = S.seat === 'THAAD' ? 'THAAD' : 'AUTO';
   if (!B.rewound){ store.p.plays++; store.save(); }
@@ -605,6 +690,7 @@ function launchBattle(sim, ctx){
 function fitView(){
   const cv = $('#scope'); const r = cv.getBoundingClientRect(); const m = Math.min(r.width, r.height);
   if (S.seat === 'THAAD' && S.thaad){ B.view.s = Math.max(.2, m / 2 / 380); const c = H.polar(S.thaad.ptl, 230, S.thaad); B.view.cx = c.x; B.view.cy = c.y; return; }
+  if (S.bn){ const xs = S.fus.map(f => f.x).concat(S.assets.map(a => a.x)), ys = S.fus.map(f => f.y).concat(S.assets.map(a => a.y)); const ax = H.polar(H.circMean(S.scn.axis || [S.bat.ptl]), 40); B.view.cx = (Math.min(...xs) + Math.max(...xs)) / 2 + ax.x; B.view.cy = (Math.min(...ys) + Math.max(...ys)) / 2 + ax.y; B.view.s = Math.max(.5, m / 2 / Math.max(110, (Math.max(...xs) - Math.min(...xs)) / 2 + 80, (Math.max(...ys) - Math.min(...ys)) / 2 + 80)); return; }
   B.view.s = Math.max(.6, m / 2 / 120); B.view.cx = S.bat.x + H.polar(S.bat.ptl, 50).x; B.view.cy = S.bat.y + H.polar(S.bat.ptl, 50).y;
 }
 
@@ -622,12 +708,27 @@ function loop(now){
   if (!B.baseCv){ B.baseCv = document.createElement('canvas'); B.clutter = []; }
   if (B.baseCv.width !== cv.width || B.baseCv.height !== cv.height){ B.baseCv.width = cv.width; B.baseCv.height = cv.height; B.baseKey = ''; }
   const v = B.view, P = pal();
-  const key = [terrVer, v.cx.toFixed(2), v.cy.toFixed(2), v.s.toFixed(3), v.tilt, cv.width, cv.height, M.bat.ptl, M.bat.half, M.bat.x, M.bat.y, M.bat.on, M.bat.alive, S.assets.map(a => a.hp).join(), S.launchers.map(L => L.dead ? 1 : 0).join(''), S.neighbors.map(n => n.on ? 1 : 0).join(''), B.scars.length, P.legacy, S.thaad ? S.thaad.alive : '', S.seat].join('|');
+  const key = [terrVer, v.cx.toFixed(2), v.cy.toFixed(2), v.s.toFixed(3), v.tilt, cv.width, cv.height, M.bat.ptl, M.bat.half, M.bat.x, M.bat.y, M.bat.on, M.bat.alive, S.assets.map(a => a.hp).join(), S.launchers.map(L => L.dead ? 1 : 0).join(''), S.neighbors.map(n => n.on ? 1 : 0).join(''), B.scars.length, P.legacy, S.thaad ? S.thaad.alive : '', S.seat, S.bn ? S.fus.map(f => [f.alive, f.emcon, Math.round(f.ptl), f.reorient > 0, f.ctrl, B.shooter === f.id].join(':')).join(';') : ''].join('|');
   if (key !== B.baseKey){ B.baseKey = key; const bctx = B.baseCv.getContext('2d'); bctx.setTransform(dpr, 0, 0, dpr, 0, 0); drawBase(bctx, v, M); }
   M.clutter = B.clutter;
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(B.baseCv, 0, 0);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  B.hits = drawLive(ctx, v, M, now, true);
+  if (store.s.crt !== false){ // phosphor persistence: last frames fade out and drift toward amber
+    if (!B.phos) B.phos = document.createElement('canvas');
+    if (B.phos.width !== cv.width || B.phos.height !== cv.height){ B.phos.width = cv.width; B.phos.height = cv.height; B.phosKey = ''; }
+    const pc = B.phos.getContext('2d'), vk = [v.cx.toFixed(2), v.cy.toFixed(2), v.s.toFixed(3), v.tilt].join();
+    pc.setTransform(1, 0, 0, 1, 0, 0);
+    if (vk !== B.phosKey){ B.phosKey = vk; pc.clearRect(0, 0, cv.width, cv.height); }
+    else { pc.globalCompositeOperation = 'destination-out'; pc.fillStyle = `rgba(0,0,0,${Math.min(.9, .38 * Math.max(1, dt * 60)).toFixed(2)})`; pc.fillRect(0, 0, cv.width, cv.height);
+      pc.globalCompositeOperation = 'source-atop'; pc.fillStyle = P.legacy ? 'rgba(30,90,20,.12)' : 'rgba(255,165,60,.10)'; pc.fillRect(0, 0, cv.width, cv.height); pc.globalCompositeOperation = 'source-over'; }
+    pc.setTransform(dpr, 0, 0, dpr, 0, 0);
+    B.hits = drawLive(pc, v, M, now, true);
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(B.baseCv, 0, 0); ctx.drawImage(B.phos, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  } else {
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(B.baseCv, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    B.hits = drawLive(ctx, v, M, now, true);
+  }
+  B.spill = Math.max(0, B.spill - dt * 1.4); if (Math.abs(B.spill - (B.spillShown || 0)) > .03){ B.spillShown = B.spill; const ce = $('.crt'); if (ce) ce.style.setProperty('--spill', B.spill.toFixed(2)); }
   B.fx = B.fx.filter(f => now - f.t0 < f.dur);
   if (now - B.panelT > 150){ B.panelT = now; updatePanels(); coachTick(); }
   if (S.ended && !B.endShown){ B.endShown = true; setTimeout(endBattle, 1600); }
@@ -639,35 +740,48 @@ function sampleHist(){
   for (const m of S.ms){ if (!m.alive) continue; }
 }
 function liveModel(now){
-  const ents = [];
+  const ents = [], lag = S.bn ? (S.bn.arch === 'IBCS' ? .4 : 1.5) : 0;
   for (const e of S.ents){
     if (!e.alive) continue;
-    const o = {uid:e.uid, x:e.x, y:e.y, z:e.z, vx:e.vx, vy:e.vy, vz:e.vz || 0, kind:e.kind, truth:e.truth, trk:e.trk && e.trk.est ? e.trk : null, ball:!!e.T.ballistic, clsLbl:e.T.cls, hist:B.hist[e.uid],
+    const tk = e.trk && e.trk.est, lx = tk && lag ? e.vx * lag : 0, ly = tk && lag ? e.vy * lag : 0, lz = tk && lag ? (e.vz || 0) * lag : 0;
+    const o = {uid:e.uid, x:e.x - lx, y:e.y - ly, z:Math.max(0, e.z - lz), vx:e.vx, vy:e.vy, vz:e.vz || 0, kind:e.kind, truth:e.truth, trk:tk ? e.trk : null, ball:!!e.T.ballistic, clsLbl:e.T.cls, hist:B.hist[e.uid],
       raw:!!e.trk && !e.trk.remote && H.radarOn(S), rcs:e.T.rcs, released:!!e.released, clr:e.T.cluster ? e.T.cluster.r : 0, tpy:!!(e.trk && e.trk.tpy), ownTrk:!!(e.trk && !e.trk.remote)};
+    if (tk && e.trk.dual) o.dual = {num:e.trk.dual.num, x:o.x + e.trk.dual.dx, y:o.y + e.trk.dual.dy};
     if (o.trk && o.ball){ const a = H.assess(S, e); o.impact = a.impact; o.dal = a.dal; }
-    if (o.trk){ const p = H.activePlan(S, e); if (p) o.stat = (p.tier === 'UT' ? 'UT ' : '') + (p.state === 'VETO' ? 'VETO' : p.state === 'GUIDING' ? 'ENG' : p.state === 'WAIT' ? 'PLN' : 'ENG'); }
+    if (o.trk){
+      if (S.bn){ const ps = S.plans.filter(p => p.uid === e.uid && p.state !== 'DONE'); if (ps.length){ const lt = ps.filter(p => p.tier === 'LT'); o.stat = (ps.some(p => p.tier === 'UT') ? 'UT ' : '') + (lt.some(p => p.state === 'VETO') ? 'VETO ' : '') + lt.map(p => p.fu).join('+') + (lt.length > 1 ? ' ×' + lt.length : ''); } }
+      else { const p = H.activePlan(S, e); if (p) o.stat = (p.tier === 'UT' ? 'UT ' : '') + (p.state === 'VETO' ? 'VETO' : p.state === 'GUIDING' ? 'ENG' : p.state === 'WAIT' ? 'PLN' : 'ENG'); }
+    }
     ents.push(o);
   }
   const ms = [];
   for (const m of S.ms){ if (!m.alive) continue; const tr = B.trails[m.id] || (B.trails[m.id] = []); const last = tr[tr.length - 1]; if (!last || Math.hypot(last[0] - m.x, last[1] - m.y) > .8) { tr.push([m.x, m.y, m.z]); if (tr.length > 40) tr.shift(); } ms.push({x:m.x, y:m.y, z:m.z, own:m.owner === 'own', owner:m.owner, tier:m.tier, aim:m.aim, trail:tr}); }
-  return {mapKey:S.scn.map, bat:{x:S.bat.x, y:S.bat.y, ptl:S.bat.ptl, half:S.bat.half, on:H.radarOn(S), alive:S.bat.alive}, launchers:S.launchers, assets:S.assets, ents, ms, fx:B.fx, scars:B.scars, neighbors:S.neighbors, jammers:S.ents.filter(e => e.alive && e.kind === 'JAM'), hooked:B.hooked, bty:S.scn.bty.split(' ')[0],
+  return {mapKey:S.scn.map, bat:{x:S.bat.x, y:S.bat.y, ptl:S.bat.ptl, half:S.bat.half, rf:S.bat.rf, on:H.radarOn(S), alive:S.bat.alive}, launchers:S.launchers, assets:S.assets, ents, ms, fx:B.fx, scars:B.scars, neighbors:S.neighbors, jammers:S.ents.filter(e => e.alive && e.kind === 'JAM'), hooked:B.hooked, bty:S.bn ? `${S.bat.id} · ${S.bat.name}${S.bat.ltamds ? ' · LTAMDS' : ''}${S.bat.emcon ? ' · SILENT' : ''}${S.bat.ctrl === 'HOLD' ? ' · HOLD' : ''}` : S.scn.bty.split(' ')[0],
+    fus:S.bn ? S.fus.map(f => ({...f, sel:B.shooter === f.id})) : null, acm:S.scn.acm || null, sirens:B.sirens,
     thaad:S.thaad, cuas:S.cuas, sbw:S.sbw.filter(a => a.on && a.cx != null), seat:S.seat, video:B.video, sym:store.s.sym, scan:store.s.scan || 'CLEAN', scanS:B.scanS || (B.scanS = {k:0, last:0, acc:0, beams:[]})};
 }
 function drain(now){
   for (const o of S.out){
     if (o.k === 'say'){ VO.say(o.who, o.text, o.pri); if (o.who === 'TD') toast(S.scn.td, o.text); }
-    else if (o.k === 'tone') AU.tone(o.v);
-    else if (o.k === 'kill') B.fx.push({k:'kill', x:o.x, y:o.y, z:o.z, t0:now, dur:1200});
+    else if (o.k === 'tone'){ if (o.v !== 'launch' && o.v !== 'impact') AU.tone(o.v); }
+    else if (o.k === 'kill'){ B.fx.push({k:'kill', x:o.x, y:o.y, z:o.z, t0:now, dur:1200}); B.spill = Math.max(B.spill, .9); }
     else if (o.k === 'miss' || o.k === 'destruct') B.fx.push({k:'miss', x:o.x, y:o.y, z:o.z, t0:now, dur:700});
-    else if (o.k === 'impact'){ B.fx.push({k:'impact', x:o.x, y:o.y, z:0, t0:now, dur:1800, harmless:o.harmless}); B.scars.push({x:o.x, y:o.y, harmless:o.harmless}); }
-    else if (o.k === 'launch') B.fx.push({k:'launch', x:o.x, y:o.y, z:0, t0:now, dur:600});
+    else if (o.k === 'impact'){ B.fx.push({k:'impact', x:o.x, y:o.y, z:0, t0:now, dur:1800, harmless:o.harmless}); B.scars.push({x:o.x, y:o.y, harmless:o.harmless}); posSound(o.x, o.y, 'impact'); B.spill = Math.max(B.spill, .7); }
+    else if (o.k === 'launch'){ B.fx.push({k:'launch', x:o.x, y:o.y, z:0, t0:now, dur:600}); posSound(o.x, o.y, 'launch'); B.spill = Math.max(B.spill, .35); }
+    else if (o.k === 'debris'){ B.fx.push({k:'debris', x:o.x, y:o.y, z:0, t0:now, dur:2400, bad:o.bad}); if (o.bad){ AU.tone('debris'); B.scars.push({x:o.x, y:o.y}); } }
     else if (o.k === 'banner') banner(o.text);
     else if (o.k === 'cluster') B.fx.push({k:'cluster', x:o.x, y:o.y, z:o.z, t0:now, dur:2400});
-    else if (o.k === 'bloom'){ B.fx.push({k:'bloom', x:o.x, y:o.y, z:0, r:o.r, t0:now, dur:2600, harmless:o.harmless}); B.scars.push({x:o.x, y:o.y, harmless:o.harmless}); }
+    else if (o.k === 'bloom'){ B.fx.push({k:'bloom', x:o.x, y:o.y, z:0, r:o.r, t0:now, dur:2600, harmless:o.harmless}); B.scars.push({x:o.x, y:o.y, harmless:o.harmless}); posSound(o.x, o.y, 'impact'); }
     else if (o.k === 'ka') B.fx.push({k:'ka', x:o.x, y:o.y, z:o.z, t0:now, dur:2600});
     else if (o.k === 'shake'){ const w = $('#scopeWrap'); w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake'); B.stunUntil = now + 1800; const d = $('#dustFx'); d.classList.remove('on'); void d.offsetWidth; d.classList.add('on'); }
   }
   S.out.length = 0;
+}
+function posSound(x, y, kind){ // sound travels: distant launches and impacts arrive late and low
+  const d = Math.hypot(x - S.bat.x, y - S.bat.y);
+  if (d < (kind === 'launch' ? 3 : 2)){ AU.tone(kind); return; }
+  const delay = Math.min(8, d / .343) / Math.max(1, B.speed || 1), g = (kind === 'impact' ? .8 : .55) * Math.max(.05, Math.min(1, 3 / d));
+  AU.rumble(delay, g, kind === 'impact');
 }
 function toast(who, text){ const t = $('#toast'); t.innerHTML = `<b>${esc(who)}</b> · ${esc(text)}`; t.hidden = false; t.style.opacity = 1; clearTimeout(B.toastT); B.toastT = setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.hidden = true, 400); }, 6500); }
 
@@ -688,9 +802,10 @@ function updatePanels(force){
   $('#sHos').textContent = hos; $('#sUnk').textContent = unk;
   $('#sMse').textContent = H.rounds(S, 'MSE', false); $('#sGem').textContent = H.rounds(S, 'GEMT', false);
   $('#sTh').hidden = $('#sThL').hidden = !S.thaad; if (S.thaad) $('#sTh').textContent = H.rounds(S, 'THAAD', false);
-  const sb = $('#sSeat'); sb.hidden = !S.thaad; sb.textContent = S.seat === 'THAAD' ? 'THAAD SEAT' : 'PATRIOT SEAT'; sb.classList.toggle('ut', S.seat === 'THAAD');
+  const sb = $('#sSeat'); sb.hidden = !S.thaad && !S.bn; sb.textContent = S.bn ? 'BATTALION FDC' : S.seat === 'THAAD' ? 'THAAD SEAT' : 'PATRIOT SEAT'; sb.classList.toggle('ut', S.seat === 'THAAD'); sb.classList.toggle('bn', !!S.bn);
   const lamp = (k, st) => { const i = $(`#sSys [data-k="${k}"]`); if (i){ i.className = st; } };
-  lamp('RAD', !S.bat.alive || S.bat.epp ? 'bad' : S.bat.radarFault || S.bat.emcon || S.bat.reorient > 0 || S.bat.displace > 0 ? 'warn' : 'ok');
+  if (S.bn){ const up = S.fus.filter(H.radarOnFu).length; lamp('RAD', S.fus.some(f => !f.alive) ? 'bad' : up < S.fus.length ? 'warn' : 'ok'); }
+  else lamp('RAD', !S.bat.alive || S.bat.epp ? 'bad' : S.bat.radarFault || S.bat.emcon || S.bat.reorient > 0 || S.bat.displace > 0 ? 'warn' : 'ok');
   const tl = $('#sSys [data-k="TPY"]'); tl.hidden = !S.thaad; if (S.thaad) lamp('TPY', !S.thaad.alive ? 'bad' : S.thaad.emcon ? 'warn' : 'ok');
   lamp('COM', S.comms ? 'ok' : 'bad'); lamp('PWR', S.bat.epp ? 'bad' : 'ok'); lamp('MOPP', S.mopp >= 4 ? 'warn' : '');
   document.body.classList.toggle('emerg', !!S.bat.epp);
@@ -701,14 +816,16 @@ function updatePanels(force){
   $('#sClock').textContent = 'T+' + fmtT(S.t);
   const d = new Date(Date.UTC(2026, 0, 1, 19, 40) + S.t * 1000 * 4); $('#sZulu').textContent = pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + 'Z · ' + S.scn.bty;
   const rs = $('#radarState'); const b = S.bat;
-  const rtxt = B.coach && B.coach.held ? 'COACH · CLOCK STOPPED' : !b.alive ? 'RADAR DESTROYED' : b.displace > 0 ? `MARCH ORDER · ${Math.ceil(b.displace)} s` : b.reorient > 0 ? `REORIENTING · ${Math.ceil(b.reorient)} s` : b.epp > 0 ? 'POWER FAULT' : b.emcon ? 'EMCON · RADAR SILENT' : '';
+  const rtxt = B.coach && B.coach.held ? 'COACH · CLOCK STOPPED' : S.bn ? '' : !b.alive ? 'RADAR DESTROYED' : b.displace > 0 ? `MARCH ORDER · ${Math.ceil(b.displace)} s` : b.reorient > 0 ? `REORIENTING · ${Math.ceil(b.reorient)} s` : b.epp > 0 ? 'POWER FAULT' : b.emcon ? 'EMCON · RADAR SILENT' : '';
   rs.hidden = !rtxt; rs.textContent = rtxt;
   let cur = ''; if (B.cursor && !B.view.tilt){ const w = unproj(B.view, B.cursor.px, B.cursor.py); cur = ` · CURSOR ${pad(Math.round(H.brgOf(w.x - S.bat.x, w.y - S.bat.y)) % 360, 3)}° ${Math.hypot(w.x - S.bat.x, w.y - S.bat.y).toFixed(1)} KM`; }
   $('#scopeInfo').textContent = `${B.view.tilt ? '3D' : 'PLAN'} · ${(B.view.W / B.view.s).toFixed(0)} KM ACROSS${cur}`;
+  updateSirens(); renderAlert();
   // log
   const lg = $('#log');
   while (B.logN < S.log.length){
     const L = S.log[B.logN++], li = document.createElement('li');
+    if (L.cls === 'net' && performance.now() - B.netT > 1500){ B.netT = performance.now(); AU.tone('squelch2'); }
     li.className = (L.cls || '') + ' w-' + L.who;
     li.innerHTML = `<span class="tm">${fmtT(L.t)}</span>${L.cls === 'sys' ? '' : `<span class="who">${esc(L.who)}</span>`}${esc(L.text)}`;
     lg.appendChild(li); if (lg.children.length > 120) lg.firstChild.remove();
@@ -725,10 +842,56 @@ function updatePanels(force){
   renderPage();
 }
 
+function updateSirens(){ // towns under a predicted impact or a launch-warning area sound their sirens
+  const out = [];
+  for (const a of S.assets){
+    if (!a.pop || a.hp <= 0) continue;
+    const trk = S.ents.some(e => e.alive && e.T.ballistic && e.trk && e.trk.est && e.trk.cls && e.I && Math.hypot(e.I.x - a.x, e.I.y - a.y) < 6 && e.t0 + e.T0 - S.t < 150);
+    const sbw = S.sbw.some(w => w.on && w.cx != null && Math.hypot(w.cx - a.x, w.cy - a.y) < w.r);
+    if (trk || sbw) out.push({id:a.id, x:a.x, y:a.y});
+  }
+  const key = out.map(x => x.id).join();
+  if (key !== B.sirenSet){ const fresh = out.some(x => !B.sirenSet.split(',').includes(x.id)); B.sirenSet = key; if (fresh && performance.now() - B.sirenT > 8000){ B.sirenT = performance.now(); AU.tone('siren'); } }
+  B.sirens = out;
+}
+function alertNow(){ // the single most urgent thing on the console, ranked
+  const veto = S.plans.find(p => p.state === 'VETO');
+  if (veto){ const e = S.ents.find(x => x.uid === veto.uid); const fu = veto.fu ? H.fuById(S, veto.fu).name + ' ' : ''; const odd = !e || !e.trk || e.trk.iff !== 'NO RESP' || H.inCorridor(S, e) || (S.bn && H.inZone(S, e, 'CAP')) || ['FW', 'RW'].includes(e.T.cls); return {p:odd ? 3 : 1, key:'v' + veto.id, k:'VETO ' + Math.ceil(veto.vetoT), t:`${fu}ENGAGING TRK ${veto.trk}${e && e.trk ? ' · ' + e.trk.id + ' · IFF ' + (e.trk.iff || '?') : ''} · V TO VETO`, act:() => H.cmd(S, 'veto', {pid:veto.id}), blink:odd}; }
+  const arm = S.ents.find(e => e.alive && e.kind === 'ARM' && e.trk && e.trk.est);
+  if (arm) return {p:3, key:'arm' + arm.uid, k:'ARM', t:`TRK ${arm.trk.num} INBOUND ON ${(arm.home || S.bat).name || 'THE RADAR'} · GO SILENT`, act:() => hook(arm.uid)};
+  let tbm = null;
+  for (const e of S.ents){ if (!e.alive || !e.T.ballistic || e.T.debris || !e.trk || !e.trk.est || !e.trk.cls || e.trk.hold) continue; const a = H.assess(S, e); if (!a.dal || a.tta > 45) continue; if (S.plans.some(p => p.uid === e.uid && p.state !== 'DONE')) continue; if (!tbm || a.tta < tbm.a.tta) tbm = {e, a}; }
+  if (tbm) return {p:3, key:'t' + tbm.e.uid, k:'TBM ' + tbm.e.trk.num, t:`IMPACT ${tbm.a.dal.name.toUpperCase()} ${Math.round(tbm.a.tta)} S · NOT ENGAGED`, act:() => hook(tbm.e.uid)};
+  if (S.acks.some(a => !a.done)) return {p:2, key:'ack', k:'ORDER', t:'TD ORDER WAITING · SPACE TO ACKNOWLEDGE', act:() => H.cmd(S, 'ack')};
+  const sw = [...S.ev].reverse().find(x => x.k === 'SWAP' && x.bad && S.t - x.t < 12);
+  if (sw) return {p:2, key:'sw' + sw.t, k:'CROSSING', t:sw.text.toUpperCase().slice(0, 90), act:() => { const e = S.ents.find(x => x.alive && x.trk && x.trk.num === sw.trk); if (e) hook(e.uid); }};
+  if (S.bn){ const cap = S.ents.filter(e => e.alive && e.trk && e.trk.est && e.trk.cls && !e.T.ballistic && (e.trk.id === 'UNK' || e.trk.id === 'PND') && e.trk.iff === 'NO RESP' && H.inZone(S, e, 'CAP'));
+    if (cap.length) return {p:2, key:'cap' + cap.length, k:'CAP BOX', t:`${cap.length} SILENT TRACK${cap.length > 1 ? 'S' : ''} AMONG THE FIGHTERS · CREWS WILL NOT DECLARE THEM · YOU MUST`, act:() => hook(cap[0].uid)}; }
+  const duals = S.ents.filter(e => e.alive && e.trk && e.trk.dual);
+  if (duals.length) return {p:2, key:'du' + duals.length, k:'DUAL', t:`${duals.length} DUAL DESIGNATION${duals.length > 1 ? 'S' : ''} · HOOK AND PRESS X TO CORRELATE`, act:() => hook(duals[0].uid)};
+  if (B.sirens.length) return {p:1, key:'sir' + B.sirenSet, k:'SIRENS', t:B.sirens.map(x => (S.assets.find(a => a.id === x.id) || {}).name).join(' · ').toUpperCase()};
+  const w = S.sbw.filter(a => a.on && a.tti != null).sort((a, b) => a.tti - b.tti)[0];
+  if (w) return {p:1, key:'sbw', k:'LAUNCH WARNING', t:`${S.sbw.filter(a => a.on).length} IN FLIGHT · FIRST IMPACT ${fmtT(w.tti)}`};
+  return null;
+}
+function renderAlert(){
+  const el = $('#alertLine'), a = alertNow();
+  el.hidden = !a; if (!a){ B.alertKey = ''; B.alertAct = null; return; }
+  B.alertAct = a.act || null;
+  const html = `<b>${esc(a.k)}</b>${esc(a.t)}`; if (el.innerHTML !== html) el.innerHTML = html;
+  el.className = `alertline p${a.p}${a.blink ? ' blink' : ''}`;
+  if (a.key !== B.alertKey){ B.alertKey = a.key; if (a.p >= 2) AU.tone(a.p === 3 ? 'a3' : 'a2'); }
+}
 function renderQueue(q){
   const el = $('#queue');
   const rows = q.slice(0, 14).map(x => {
     const e = x.e, k = e.trk, p = S.seat === 'THAAD' ? H.activePlan(S, e, 'UT') : (H.activePlan(S, e, 'LT') || x.plan); let st = '', cls = '';
+    if (S.bn){ const lt = S.plans.filter(pp => pp.uid === e.uid && pp.state !== 'DONE' && pp.tier === 'LT'), vt = lt.find(pp => pp.state === 'VETO');
+      if (vt) st = `<button class="veto" type="button" data-veto="${vt.id}">VETO ${vt.fu} ${Math.ceil(vt.vetoT)}</button>`;
+      else if (lt.length){ const m = S.ms.find(mm => mm.alive && lt.some(pp => pp.id === mm.plan)); st = `${lt.map(pp => pp.fu).join('+')}${lt.length > 1 ? ' ×' + lt.length : ''} ${m ? Math.max(0, Math.ceil(m.tEnd - S.t)) + 's' : lt[0].state === 'WAIT' ? 'WAIT' : 'FIRE'}`; cls = lt.length > 1 ? 'wait' : 'away'; }
+      else if (H.activePlan(S, e, 'UT')){ st = 'THAAD'; cls = 'ut'; } else if (k.hold) st = 'HOLD';
+      const tta = isFinite(x.a.tta) ? Math.round(x.a.tta) + 's' : '—';
+      return `<div class="qrow${e.uid === B.hooked ? ' hk' : ''}" data-uid="${e.uid}"><b>${k.num}${k.dual ? '<sup>2</sup>' : ''}</b><span>${k.cls ? e.T.cls : '···'}</span><span class="id-${k.id}">${k.id}</span><span class="dal${x.a.dal ? ' t' : ''}">${x.a.dal ? esc(x.a.dal.name) + ' ' + tta : 'NO DAL'}</span><span class="qst ${cls}">${st}</span></div>`; }
     if (p){ if (p.tier === 'UT' && S.seat !== 'THAAD'){ const m = S.ms.find(mm => mm.alive && mm.plan === p.id); st = m ? `THAAD ${Math.max(0, Math.ceil(m.tEnd - S.t))}s` : 'THAAD'; cls = 'ut'; } else if (p.state === 'VETO') st = `<button class="veto" type="button" data-veto="${p.id}">VETO ${Math.ceil(p.vetoT)}</button>`; else if (p.state === 'WAIT'){ st = 'WAIT'; cls = 'wait'; } else if (p.state === 'GUIDING' || p.state === 'READY'){ const m = S.ms.find(mm => mm.alive && mm.plan === p.id); st = m ? `AWAY ${Math.max(0, Math.ceil(m.tEnd - S.t))}s` : 'FIRING'; cls = 'away'; } }
     else if (k.hold) st = 'HOLD';
     const tta = isFinite(x.a.tta) ? Math.round(x.a.tta) + 's' : '—';
@@ -759,6 +922,7 @@ function renderCard(){
       </dl>
       <div class="idrow" id="cIds">${['FRD','NEU','UNK','SUS','HOS'].map((x, i) => `<button type="button" class="id-${x}" data-id="${x}" title="Key ${i + 1}"><span>${x}</span></button>`).join('')}</div>
       <div class="actrow"><button class="tbtn" type="button" id="cIffB">IFF</button><button class="tbtn" type="button" id="cHold">HOLD FIRE</button><button class="tbtn" type="button" id="cCuas" hidden>C-UAS</button><div class="seg" id="cW">${(S.seat === 'THAAD' ? ['THAAD'] : ['AUTO','GEMT','MSE']).map(w => `<button type="button" data-w="${w}">${w === 'GEMT' ? 'GEM-T' : w}</button>`).join('')}</div></div>
+      <div id="cCorr"></div><div class="shoot" id="cShoot" ${S.bn ? '' : 'hidden'}></div>
       <button class="engage" type="button" id="cEng"><i></i><span>${store.s.expert ? 'ENGAGE' : 'HOLD TO ENGAGE'}</span></button>
       <div class="eyebrow" id="cMsg" style="letter-spacing:.06em;min-height:1.2em"></div>`;
     $('#cIds').querySelectorAll('button').forEach(b => b.onclick = () => declare(hookedEnt(), b.dataset.id));
@@ -766,6 +930,8 @@ function renderCard(){
     $('#cHold').onclick = () => { const x = hookedEnt(); if (x) H.cmd(S, 'hold', {uid:x.uid}); };
     $('#cCuas').onclick = () => assignCuas(hookedEnt());
     $('#cW').querySelectorAll('button').forEach(b => b.onclick = () => { B.wpn = b.dataset.w; });
+    $('#cShoot').onclick = ev => { const b = ev.target.closest('[data-fu]'); if (b){ B.shooter = b.dataset.fu; AU.tone('click'); B.shHtml = ''; } };
+    $('#cCorr').onclick = ev => { if (ev.target.closest('[data-corr]')){ const x = hookedEnt(); if (x){ H.cmd(S, 'corr', {uid:x.uid}); AU.tone('click'); } } };
     holdButton($('#cEng'), () => tryEngage(hookedEnt()));
   }
   const k = e.trk, b = H.brgOf(e.x - S.bat.x, e.y - S.bat.y), r = Math.hypot(e.x - S.bat.x, e.y - S.bat.y), sp = Math.hypot(e.vx, e.vy);
@@ -778,12 +944,29 @@ function renderCard(){
   $('#cHdg').textContent = sp > .002 ? pad(Math.round(H.brgOf(e.vx, e.vy)) % 360, 3) + '°' : '—';
   const zs = k.zs || []; let vr = '—'; if (zs.length > 6 && !e.T.ballistic){ const m = zs.reduce((a, c) => a + c, 0) / zs.length; vr = Math.round(Math.sqrt(zs.reduce((a, c) => a + (c - m) ** 2, 0) / zs.length) * 1000) + ' m'; }
   const cv = $('#cVar'); cv.textContent = vr; cv.className = vr === '0 m' ? 'warn' : '';
-  const iff = $('#cIff'); iff.textContent = (k.iff || 'PENDING') + (H.onAirway(S, e) ? ' · ON AIRWAY' : '') + (H.inCorridor(S, e) ? ' · IN CORRIDOR' : ''); iff.className = 'wide ' + (k.iff === 'M4 VALID' ? 'good' : k.iff === 'NO RESP' ? 'warn' : '');
+  const iff = $('#cIff'); iff.textContent = (k.iff || 'PENDING') + (H.onAirway(S, e) ? ' · ON AIRWAY' : '') + (H.inCorridor(S, e) ? ' · IN CORRIDOR' : '') + (S.bn && H.inZone(S, e, 'CAP') ? ' · IN CAP BOX' : '') + (S.bn && H.inZone(S, e, 'WFZ') ? ' · IN WFZ' : '') + (k.ppli ? (k.id === 'FRD' && k.idBy === 'AUTO' && e.truth === 'F' ? ' · PPLI' : '') : ''); iff.className = 'wide ' + (k.iff === 'M4 VALID' ? 'good' : k.iff === 'NO RESP' ? 'warn' : '');
   const a = H.assess(S, e), thr = $('#cThr');
   thr.textContent = e.T.ballistic ? (a.dal ? `IMPACT ${a.dal.name.toUpperCase()} · ${Math.round(a.tta)} s` : `IMPACT OUTSIDE DAL · ${Math.round(a.tta)} s`) : (a.dal ? `${a.dal.name.toUpperCase()} · ${Math.round(a.tta)} s` : 'NO DAL HEADING');
   thr.className = 'wide ' + (a.dal ? 'bad' : '');
+  if (S.bn){ // sensors, correlation, shooter picker
+    const sens = (k.by || []).map(id => { const f = H.fuById(S, id); return f.name + (f.ltamds ? ' (LTAMDS)' : ''); }).join(' · ') || (k.tpy ? 'TPY-2 ONLY' : 'NO SENSOR · COASTING');
+    const cc = $('#cCorr'), ch = k.dual ? `<div class="corr"><span><b>DUAL</b> ${k.num} is also on the net as <b>${k.dual.num}</b> from ${esc(H.fuById(S, k.dual.by).name)}</span><button class="tbtn" type="button" data-corr="1">CORRELATE · X</button></div>` : `<div class="eyebrow" style="letter-spacing:.06em;margin:4px 0">SENSORS · ${esc(sens)}</div>`;
+    if (cc.innerHTML !== ch) cc.innerHTML = ch;
+    const rows = [`<button type="button" data-fu="BEST" class="${B.shooter === 'BEST' ? 'on' : ''}"><b>BEST</b><span>${(() => { const bs = H.bestShooter(S, e, B.wpn); return bs ? `${H.fuById(S, bs.fu).name} · ${WEAPONS[bs.w].name}${bs.sol.ok ? ' · TOF ' + Math.round(bs.sol.tof) + ' s' : ' · WAIT ' + bs.sol.why.toLowerCase()}` : 'NO SHOOTER'; })()}</span></button>`];
+    for (const f of S.fus){
+      const ws = B.wpn && B.wpn !== 'AUTO' && B.wpn !== 'THAAD' ? [B.wpn] : (e.T.ballistic || e.kind === 'ARM' ? ['MSE', 'GEMT'] : ['GEMT', 'MSE']);
+      let txt = '', ok = false;
+      const hold = S.bn.arch === 'IBCS' ? (k.by || []).length > 0 : H.radarOnFu(f) && (k.by || []).includes(f.id);
+      if (!f.alive && S.bn.arch !== 'IBCS') txt = 'RADAR DESTROYED';
+      else if (!hold) txt = S.bn.arch === 'IBCS' ? 'NO SENSOR TRACK' : 'NO OWN TRACK';
+      else { for (const w of ws){ const n = H.roundsFu(S, w, f.id); if (!n) continue; const so = H.solve(S, e, w, f.id); if (so.ok){ txt = `${WEAPONS[w].name} · TOF ${Math.round(so.tof)} s · ${n} RDY`; ok = true; break; } if (!txt) txt = `${WEAPONS[w].name} · ${so.why.toLowerCase()} · ${n} RDY`; } if (!txt) txt = 'NO MISSILES READY'; }
+      rows.push(`<button type="button" data-fu="${f.id}" class="${B.shooter === f.id ? 'on' : ''}${ok ? '' : ' no'}"><b>${f.id} ${esc(f.name)}</b><span class="${ok ? 'ok' : ''}">${esc(txt)}</span></button>`);
+    }
+    const sh = rows.join(''); if (sh !== B.shHtml){ $('#cShoot').innerHTML = sh; B.shHtml = sh; }
+  }
   for (const [w, id] of [['GEMT', '#cG'], ['MSE', '#cM'], ['THAAD', '#cT']]){
-    const el2 = $(id); if (w === 'THAAD'){ el2.hidden = $('#cTl').hidden = !S.thaad; if (!S.thaad) continue; }
+    const el2 = $(id); if (S.bn && w !== 'THAAD'){ el2.hidden = el2.previousElementSibling.hidden = true; continue; }
+    if (w === 'THAAD'){ el2.hidden = $('#cTl').hidden = !S.thaad; if (!S.thaad) continue; }
     const s = H.solve(S, e, w), n = H.rounds(S, w);
     el2.textContent = w === 'THAAD' && !H.thaadOn(S) ? (S.thaad.alive ? 'TPY-2 SILENT' : 'TPY-2 DESTROYED') : w === 'THAAD' && !k.tpy && e.T.ballistic ? 'NO TPY-2 TRACK' : n <= 0 ? 'NONE READY' : s.ok ? `IN ENVELOPE · TOF ${Math.round(s.tof)} s · P(K) ${Math.round((e.T.pk[w] || 0) * 100)}%` : s.why;
     el2.className = 'wide ' + (n > 0 && s.ok ? 'good' : '');
@@ -791,12 +974,13 @@ function renderCard(){
   const ka = $('#cKa'); ka.textContent = e.released ? 'SUBMUNITIONS RELEASED · NO INTERCEPT POSSIBLE' : k.ka === 'UNCERTAIN' ? 'UNCERTAIN · WARHEAD MAY STILL BE FALLING' : e.bodyHit ? 'UNCERTAIN' : '—'; ka.className = 'wide ' + (e.released || k.ka ? 'bad' : '');
   $('#cCuas').hidden = !(e.T.cls === 'UAV' && S.cuas.some(c => c.type === 'COY'));
   const p = S.seat === 'THAAD' ? H.activePlan(S, e, 'UT') : (H.activePlan(S, e, 'LT') || H.activePlan(S, e)), st = $('#cSt');
-  st.textContent = k.hold ? 'HOLD FIRE' : e.holdOrder ? 'HOLD FIRE ORDERED BY TD' : p ? `${p.state}${p.state === 'VETO' ? ' ' + Math.ceil(p.vetoT) + ' s' : ''} · ${WEAPONS[p.w].name} · ${p.doc} · SALVO ${p.salvo}` : 'NOT ENGAGED';
+  const fuTxt = S.bn ? S.plans.filter(pp => pp.uid === e.uid && pp.state !== 'DONE' && pp.tier === 'LT').map(pp => H.fuById(S, pp.fu).name).join(' + ') : '';
+  st.textContent = k.hold ? 'HOLD FIRE' : e.holdOrder ? 'HOLD FIRE ORDERED BY TD' : p ? `${fuTxt ? fuTxt + ' · ' : ''}${p.state}${p.state === 'VETO' ? ' ' + Math.ceil(p.vetoT) + ' s' : ''} · ${WEAPONS[p.w].name} · ${p.doc} · SALVO ${p.salvo}` : 'NOT ENGAGED';
   st.className = 'wide ' + (k.hold || e.holdOrder ? 'good' : p ? 'bad' : '');
   $('#cIds').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.id === k.id || (k.id === 'PND' && x.dataset.id === 'UNK' && false)));
   $('#cHold').classList.toggle('on', !!k.hold);
   $('#cW').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.w === B.wpn));
-  $('#cEng').disabled = S.seat === 'THAAD' ? (!!p || !H.thaadOn(S) || !k.tpy) : (!!p && p.tier !== 'UT') || !H.radarOn(S) || k.remote;
+  $('#cEng').disabled = S.bn ? (!!p && p.tier !== 'UT') : S.seat === 'THAAD' ? (!!p || !H.thaadOn(S) || !k.tpy) : (!!p && p.tier !== 'UT') || !H.radarOn(S) || k.remote;
 }
 
 function holdButton(btn, fire){
@@ -811,11 +995,12 @@ function cardMsg(t){ const m = $('#cMsg'); if (m){ m.textContent = t; clearTimeo
 
 function tryEngage(e){
   if (!e) return;
-  const r = H.cmd(S, 'engage', {uid:e.uid, wpn:B.wpn});
-  if (r.ok){ cardMsg('ENGAGEMENT ORDERED'); return; }
+  const fu = S.bn && B.shooter !== 'BEST' ? B.shooter : undefined;
+  const r = H.cmd(S, 'engage', {uid:e.uid, wpn:B.wpn, fu});
+  if (r.ok){ cardMsg(S.bn ? `ENGAGE ORDERED · ${H.fuById(S, r.plan.fu).name}` : 'ENGAGEMENT ORDERED'); return; }
   if (r.viol){
     modal('ROE warning', `<p>Engaging track <b>${e.trk.num}</b> breaks your rules of engagement:</p><ul>${r.viol.map(v => `<li>${esc(v)}</li>`).join('')}</ul><p>The TD will log a violation. A shot at a protected aircraft ends the battle.</p>`,
-      [{t:'Cancel'}, {t:'Fire anyway', cls:'danger', f:() => { const r2 = H.cmd(S, 'engage', {uid:e.uid, wpn:B.wpn, force:true}); if (!r2.ok) cardMsg(r2.why); }}], true);
+      [{t:'Cancel'}, {t:'Fire anyway', cls:'danger', f:() => { const r2 = H.cmd(S, 'engage', {uid:e.uid, wpn:B.wpn, force:true, fu}); if (!r2.ok) cardMsg(r2.why); }}], true);
     return;
   }
   cardMsg(r.why); AU.tone('fault');
@@ -833,12 +1018,27 @@ function declare(e, id){
   H.cmd(S, 'id', {uid:e.uid, id}); AU.tone('click');
 }
 
+function renderBnTiles(){
+  const parts = [];
+  for (const f of S.fus){
+    const Ls = S.launchers.filter(L => L.fu === f.id && !L.dead), mse = Ls.reduce((a, L) => a + L.MSE, 0), gem = Ls.reduce((a, L) => a + L.GEMT, 0), cm = Ls.reduce((a, L) => a + L.cap.MSE, 0) || 1, cg = Ls.reduce((a, L) => a + L.cap.GEMT, 0) || 1;
+    const busy = S.ms.filter(m => m.alive && m.owner === 'own' && m.tier === 'LT' && m.fu === f.id).length, rl = Ls.filter(L => L.state === 'RELOAD').length, dead = S.launchers.filter(L => L.fu === f.id && L.dead).length;
+    const stt = !f.alive ? 'DESTROYED' : f.emcon ? 'SILENT' : f.reorient > 0 ? `REORIENT ${Math.ceil(f.reorient)}s` : f.epp > 0 ? 'NO POWER' : 'RADIATING';
+    parts.push(`<div class="ls fu${B.shooter === f.id ? ' sel' : ''}${f.alive ? '' : ' down'}"><div class="lh"><b data-pick="${f.id}" title="Pick as shooter">${f.id} · ${esc(f.name)}</b><span class="stt ${!f.alive ? 'DEAD' : stt === 'RADIATING' ? '' : 'MOVE'}">${stt}</span></div>
+      <div class="rd${f.ltamds ? ' lt' : ''}">${f.ltamds ? 'LTAMDS · 360°' : 'MPQ-65 · PTL ' + pad(Math.round(f.ptl) % 360, 3)}</div>
+      <div class="bars"><span>MSE</span><i><em style="width:${Math.round(mse / cm * 100)}%"></em></i><b>${mse}</b><span>GEM</span><i class="g"><em style="width:${Math.round(gem / cg * 100)}%"></em></i><b>${gem}</b></div>
+      <div class="chn">GUIDING ${busy}/${H.CHAN.LT}${rl ? ' · ' + rl + ' RELOADING' : ''}${dead ? ' · ' + dead + ' LS LOST' : ''}</div>
+      <div class="ctl"><button type="button" data-fuctrl="${f.id}" class="${f.ctrl === 'HOLD' ? 'on' : ''}" title="Autonomous: the crew defends its own area. Hold: fires only on your order">${f.ctrl === 'HOLD' ? 'HOLD' : 'AUTO'}</button><button type="button" data-fuemcon="${f.id}" class="${f.emcon ? 'red' : ''}" ${f.alive ? '' : 'disabled'}>${f.emcon ? 'RADIATE' : 'EMCON'}</button>${f.ltamds ? '' : `<button type="button" data-fuptl="${f.id}" ${f.alive ? '' : 'disabled'}>PTL</button>`}</div></div>`);
+  }
+  parts.push(`<div class="ls sys"><div class="lh"><b>BN RESERVE</b><span class="stt">${S.bn.arch}</span></div><div>${S.reserve.MSE} MSE · ${S.reserve.GEMT} GEM-T</div><div>CREWS RELOAD ON THEIR OWN</div></div>`);
+  return parts;
+}
 function renderLaunchers(force){
-  const row = $('#lnchRow'); const parts = [];
+  const row = $('#lnchRow'); const parts = S.bn ? renderBnTiles() : [];
   const b = S.bat;
   if (S.thaad){ const T = S.thaad; parts.push(`<div class="ls sys ut"><div class="lh"><b>TPY-2</b><span class="stt ${T.alive ? (T.emcon ? 'MOVE' : '') : 'DEAD'}">${!T.alive ? 'DESTROYED' : T.emcon ? 'SILENT' : 'RADIATING'}</span></div><div>${esc(T.name)} · PTL ${pad(Math.round(T.ptl) % 360, 3)}</div><div>RESERVE ${S.reserve.THAAD || 0} THAAD · ${S.seat === 'THAAD' ? 'YOUR SEAT' : 'AI CREW'}</div></div>`); }
-  parts.push(`<div class="ls sys"><div class="lh"><b>RADAR</b><span class="stt ${!b.alive ? 'DEAD' : H.radarOn(S) ? '' : 'MOVE'}">${!b.alive ? 'DOWN' : b.emcon ? 'SILENT' : b.reorient > 0 ? 'REORIENT' : b.displace > 0 ? 'MOVING' : b.epp > 0 ? 'NO POWER' : b.radarFault > 0 ? 'DEGRADED' : 'RADIATING'}</span></div><div>MPQ-65 · PTL ${pad(Math.round(b.ptl) % 360, 3)}</div><div>RESERVE ${S.reserve.MSE} MSE · ${S.reserve.GEMT} GEM-T</div></div>`);
-  for (const L of S.launchers){
+  if (!S.bn) parts.push(`<div class="ls sys"><div class="lh"><b>RADAR</b><span class="stt ${!b.alive ? 'DEAD' : H.radarOn(S) ? '' : 'MOVE'}">${!b.alive ? 'DOWN' : b.emcon ? 'SILENT' : b.reorient > 0 ? 'REORIENT' : b.displace > 0 ? 'MOVING' : b.epp > 0 ? 'NO POWER' : b.radarFault > 0 ? 'DEGRADED' : 'RADIATING'}</span></div><div>MPQ-65 · PTL ${pad(Math.round(b.ptl) % 360, 3)}</div><div>RESERVE ${S.reserve.MSE} MSE · ${S.reserve.GEMT} GEM-T</div></div>`);
+  for (const L of S.bn ? S.launchers.filter(x => x.type === 'THAAD') : S.launchers){
     const pips = (n, cap, g) => Array.from({length:cap}, (_, i) => `<i class="${g ? 'g ' : ''}${i < n ? 'f' : ''}"></i>`).join('');
     const canR = !L.dead && L.state === 'READY' && ((L.cap.MSE > L.MSE && S.reserve.MSE > 0) || (L.cap.GEMT > L.GEMT && S.reserve.GEMT > 0) || (L.cap.THAAD > L.THAAD && S.reserve.THAAD > 0));
     const stt = L.dead ? 'DEAD' : L.state === 'READY' ? 'READY' : `${L.state} ${Math.ceil(L.timer)}s`;
@@ -873,12 +1073,13 @@ function wireBattle(){
   $('#sEnd').onclick = () => { if (!S) return; const sp = B.speed; B.speed = 0; modal('End the watch', '<p>The battle is scored as it stands now.</p>', [{t:'Keep fighting', f:() => B.speed = sp || 1}, {t:'End watch', cls:'danger', f:() => { H.cmd(S, 'end'); B.speed = 1; }}]); };
   $('#btnAck').onclick = () => S && H.cmd(S, 'ack');
   $('#pageKeys').onclick = ev => { const b = ev.target.closest('[data-pg]'); if (b && B) setPage(b.dataset.pg); };
-  $('#sysPage').addEventListener('pointerdown', ev => { if (!S) return; const f = ev.target.closest('[data-fix]'); if (f){ ev.preventDefault(); H.cmd(S, 'fix', {fid:+f.dataset.fix, act:f.dataset.act}); AU.tone('click'); return; } const sc = ev.target.closest('[data-sector]'); if (sc){ ev.preventDefault(); H.cmd(S, 'sector', {v:sc.dataset.sector}); return; } const se = ev.target.closest('[data-seat]'); if (se){ ev.preventDefault(); H.cmd(S, 'seat', {v:se.dataset.seat}); onSeat(); return; } const ly = ev.target.closest('[data-layer]'); if (ly){ ev.preventDefault(); H.cmd(S, 'layer', {v:ly.dataset.layer}); return; } const ca = ev.target.closest('[data-cuasauto]'); if (ca){ ev.preventDefault(); H.cmd(S, 'cuasAuto', {v:ca.dataset.cuasauto === '1'}); return; } const te = ev.target.closest('[data-tpyemcon]'); if (te){ ev.preventDefault(); H.cmd(S, 'tpyEmcon', {v:!S.thaad.emcon}); return; } if (ev.target.closest('[data-emcon]')){ ev.preventDefault(); H.cmd(S, 'emcon', {v:!S.bat.emcon}); } });
+  $('#sysPage').addEventListener('pointerdown', ev => { if (!S) return; if (bnAction(ev)) return; const f = ev.target.closest('[data-fix]'); if (f){ ev.preventDefault(); H.cmd(S, 'fix', {fid:+f.dataset.fix, act:f.dataset.act}); AU.tone('click'); return; } const sc = ev.target.closest('[data-sector]'); if (sc){ ev.preventDefault(); H.cmd(S, 'sector', {v:sc.dataset.sector}); return; } const se = ev.target.closest('[data-seat]'); if (se){ ev.preventDefault(); H.cmd(S, 'seat', {v:se.dataset.seat}); onSeat(); return; } const ly = ev.target.closest('[data-layer]'); if (ly){ ev.preventDefault(); H.cmd(S, 'layer', {v:ly.dataset.layer}); return; } const ca = ev.target.closest('[data-cuasauto]'); if (ca){ ev.preventDefault(); H.cmd(S, 'cuasAuto', {v:ca.dataset.cuasauto === '1'}); return; } const te = ev.target.closest('[data-tpyemcon]'); if (te){ ev.preventDefault(); H.cmd(S, 'tpyEmcon', {v:!S.thaad.emcon}); return; } if (ev.target.closest('[data-emcon]')){ ev.preventDefault(); H.cmd(S, 'emcon', {v:!S.bat.emcon}); } });
   $('#crewPage').addEventListener('change', ev => { const c = ev.target.closest('[data-del]'); if (!c || !S) return; H.cmd(S, 'delegate', {k:c.dataset.del, v:c.checked}); store.s.delegate = {...S.tca.delegate}; store.save(); });
   $('#ptabs').onclick = ev => { const b = ev.target.closest('button'); if (b && B) setSheet(b.dataset.p); };
   $$('[data-close]').forEach(b => b.onclick = () => B && setSheet(''));
   $('#queue').addEventListener('pointerdown', ev => { const v = ev.target.closest('[data-veto]'); if (v){ ev.preventDefault(); H.cmd(S, 'veto', {pid:+v.dataset.veto}); return; } const r = ev.target.closest('[data-uid]'); if (r) hook(+r.dataset.uid); });
-  $('#lnchRow').addEventListener('pointerdown', ev => { const b = ev.target.closest('[data-reload]'); if (b){ ev.preventDefault(); const id = b.dataset.reload; H.cmd(S, 'reload', {id:isNaN(+id) ? id : +id}); } });
+  $('#lnchRow').addEventListener('pointerdown', ev => { if (bnAction(ev)) return; const b = ev.target.closest('[data-reload]'); if (b){ ev.preventDefault(); const id = b.dataset.reload; H.cmd(S, 'reload', {id:isNaN(+id) ? id : +id}); } });
+  $('#alertLine').onclick = () => { if (B && B.alertAct){ B.alertAct(); AU.tone('click'); } };
   $('#swGuard').onclick = () => { if (!B) return; B.guard = !B.guard; AU.tone('click'); clearTimeout(B.guardT); if (B.guard) B.guardT = setTimeout(() => { B.guard = false; }, 6000); updatePanels(); };
   $('#swEng').onclick = () => { if (!B || !B.guard || stunned()) return; tryEngage(hookedEnt()); B.guard = false; updatePanels(); };
   $('#swHold').onclick = () => { const e = hookedEnt(); if (e && !stunned()) H.cmd(S, 'hold', {uid:e.uid}); };
@@ -886,7 +1087,7 @@ function wireBattle(){
   $('#swPtt').onclick = () => { if (S && !stunned()){ H.cmd(S, 'ack'); AU.tone('squelch'); } };
   $('#zVid').onclick = () => { if (!B) return; B.video = B.video === 'MIX' ? 'SYN' : 'MIX'; $('#zVid').textContent = B.video; $('#zVid').title = B.video === 'MIX' ? 'Symbols plus raw returns' : 'Symbols only, as on the real console'; store.s.video = B.video; store.save(); };
   $('#zIn').onclick = () => zoom(1.4); $('#zOut').onclick = () => zoom(1 / 1.4);
-  $('#zCtr').onclick = () => { if (B){ B.view.cx = S.bat.x; B.view.cy = S.bat.y; } };
+  $('#zCtr').onclick = () => { if (B){ fitView(); } };
   $('#z3d').onclick = () => { if (!B) return; B.view.tilt = !B.view.tilt; if (B.U) B.U.tilted = true; $('#z3d').classList.toggle('on', B.view.tilt); };
   $('#coachNext').onclick = () => coachNext(); $('#coachMin').onclick = () => $('#coach').classList.toggle('min');
   const cv = $('#scope'); const ptrs = new Map(); let dragged = false, pinch0 = 0, s0 = 1;
@@ -897,7 +1098,7 @@ function wireBattle(){
     if (dragged){ B.view.cx -= dx / B.view.s; B.view.cy += dy / B.view.s * (B.view.tilt ? 1.6 : 1); } });
   const up = ev => { const p = ptrs.get(ev.pointerId); ptrs.delete(ev.pointerId); if (!B || !p) return; if (!dragged && ptrs.size === 0 && !stunned()){ const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top; let best = null, bd = 24; for (const h of B.hits){ const d = Math.hypot(h.x - x, h.y - y); if (d < bd){ bd = d; best = h; } } hook(best ? best.uid : null); } };
   cv.addEventListener('pointerup', up);
-  cv.addEventListener('pointermove', ev => { if (!B || ev.pointerType === 'touch') return; const r = cv.getBoundingClientRect(); B.cursor = {px:ev.clientX - r.left, py:ev.clientY - r.top}; });
+  cv.addEventListener('pointermove', ev => { if (!B || ev.pointerType === 'touch') return; const r = cv.getBoundingClientRect(); B.cursor = {px:ev.clientX - r.left, py:ev.clientY - r.top}; const ce = $('.crt'); ce.style.setProperty('--gx', (B.cursor.px / r.width * 100).toFixed(1) + '%'); ce.style.setProperty('--gy', (B.cursor.py / r.height * 100).toFixed(1) + '%'); });
   cv.addEventListener('pointerleave', () => { if (B) B.cursor = null; }); cv.addEventListener('pointercancel', ev => ptrs.delete(ev.pointerId));
   cv.addEventListener('wheel', ev => { ev.preventDefault(); if (!B) return; const r = cv.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top; const w0 = unproj(B.view, mx, my); zoom(ev.deltaY < 0 ? 1.15 : 1 / 1.15); if (!B.view.tilt){ const w1 = unproj(B.view, mx, my); B.view.cx += w0.x - w1.x; B.view.cy += w0.y - w1.y; } }, {passive:false});
   document.addEventListener('keydown', ev => {
@@ -905,7 +1106,10 @@ function wireBattle(){
     if (ev.target.matches('input,textarea')) return;
     if (stunned() && ev.key !== 'p') return;
     const e = hookedEnt(), k = ev.key.toLowerCase();
+    if (k.length === 1 || k === 'tab' || k === 'enter') AU.tone('key');
     if (k === ' '){ ev.preventDefault(); H.cmd(S, 'ack'); }
+    else if (k === 'x' && S.bn){ if (e && e.trk.dual) H.cmd(S, 'corr', {uid:e.uid}); else { const d = S.ents.find(x => x.alive && x.trk && x.trk.dual); if (d) hook(d.uid); } }
+    else if (k === 'b' && S.bn){ const ids = ['BEST', ...S.fus.map(f => f.id)]; B.shooter = ids[(ids.indexOf(B.shooter) + 1) % ids.length]; B.shHtml = ''; toast('FDC', 'Shooter: ' + (B.shooter === 'BEST' ? 'best available' : H.fuById(S, B.shooter).name)); }
     else if (k === 'e'){ tryEngage(e); }
     else if (k === 'h'){ if (e) H.cmd(S, 'hold', {uid:e.uid}); }
     else if (k === 'i'){ if (e) H.cmd(S, 'iff', {uid:e.uid}); }
@@ -925,6 +1129,19 @@ function wireBattle(){
     else if (['f1','f2','f3','f4'].includes(k)){ ev.preventDefault(); setPage(['trk','tl','sys','crew'][+k[1] - 1]); }
   });
   window.addEventListener('resize', () => { if (UI.screen === 'brief') briefDraw(); });
+}
+function bnAction(ev){ // battery tile and system page controls for the battalion
+  if (!S || !S.bn) return false;
+  const t = ev.target, pick = t.closest('[data-pick]'), c = t.closest('[data-fuctrl]'), em = t.closest('[data-fuemcon]'), pt = t.closest('[data-fuptl]');
+  if (!pick && !c && !em && !pt) return false;
+  ev.preventDefault(); AU.tone('click');
+  if (pick){ B.shooter = B.shooter === pick.dataset.pick ? 'BEST' : pick.dataset.pick; B.shHtml = ''; B.lHtml = ''; }
+  else if (c){ const f = H.fuById(S, c.dataset.fuctrl); H.cmd(S, 'fuCtrl', {fu:f.id, v:c.dataset.v || (f.ctrl === 'HOLD' ? 'AUTO' : 'HOLD')}); }
+  else if (em){ const f = H.fuById(S, em.dataset.fuemcon); H.cmd(S, 'fuEmcon', {fu:f.id, v:!f.emcon}); }
+  else if (pt){ const f = H.fuById(S, pt.dataset.fuptl), cur = Math.round(f.ptl);
+    modal(`Reorient ${f.name}`, `<p>${esc(f.name)}'s radar goes dark for 25 seconds while it slews.</p><p><input id="ptlIn" type="range" min="0" max="359" value="${cur}" style="width:100%;accent-color:var(--amber)"> <b id="ptlV" style="font-family:var(--f-data)">${pad(cur, 3)}°</b></p>`, [{t:'Cancel'}, {t:'Reorient', cls:'primary', f:() => H.cmd(S, 'fuPtl', {fu:f.id, ptl:+$('#ptlIn').value})}]);
+    $('#ptlIn').oninput = () => $('#ptlV').textContent = pad(+$('#ptlIn').value, 3) + '°'; }
+  B.h = {}; updatePanels(); return true;
 }
 function zoom(f){ if (!B) return; B.view.s = Math.max(.18, Math.min(14, B.view.s * f)); }
 const stunned = () => B && performance.now() < (B.stunUntil || 0);
@@ -1012,7 +1229,22 @@ function renderTimeline(){
   const key = '<div class="tlkey"><span><b class="ln"></b>launch</span><span><i class="fly"></i>missile flight</span><span><b class="ka"></b>intercept</span><span><b class="imp"></b>threat reaches asset</span></div>';
   setHtml($('#tlPage'), (rows.length ? axis + rows.join('') : '<div class="qempty">No engagements in progress. Each engagement appears here with its launch time, missile flight, intercept point and the moment the threat would reach its asset. If the red tick sits left of the intercept, the shot is too late.</div>') + key, 'tl');
 }
+function renderBnSystem(){
+  const ib = S.bn.arch === 'IBCS', duals = S.ents.filter(e => e.alive && e.trk && e.trk.dual).length;
+  const rows = S.fus.map(f => `<span class="sl">${f.id} · ${esc(f.name)}</span><span class="sv ${H.radarOnFu(f) ? 'ok' : 'bad'}">${!f.alive ? 'RADAR DESTROYED' : f.emcon ? 'SILENT' : f.reorient > 0 ? 'REORIENTING ' + Math.ceil(f.reorient) + ' s' : 'RADIATING'} · ${f.ltamds ? 'LTAMDS 360°' : 'MPQ-65 PTL ' + pad(Math.round(f.ptl) % 360, 3)}
+    <span class="fuctl"><span class="seg"><button type="button" data-fuctrl="${f.id}" data-v="AUTO" class="${f.ctrl === 'HOLD' ? '' : 'on'}">AUTO</button><button type="button" data-fuctrl="${f.id}" data-v="HOLD" class="${f.ctrl === 'HOLD' ? 'on' : ''}">HOLD</button></span> <button type="button" class="tbtn${f.emcon ? ' on' : ''}" data-fuemcon="${f.id}" ${f.alive ? '' : 'disabled'}>${f.emcon ? 'RADIATE' : 'GO SILENT'}</button>${f.ltamds ? '' : ` <button type="button" class="tbtn" data-fuptl="${f.id}" ${f.alive ? '' : 'disabled'}>PTL</button>`}</span></span>`).join('');
+  setHtml($('#sysLive'), `<div class="sysg">
+    <span class="sl">ARCHITECTURE</span><span class="sv ${ib ? 'ok' : ''}">${ib ? 'IBCS · ONE COMPOSITE PICTURE · ANY SENSOR, BEST SHOOTER' : 'LEGACY · EACH BATTERY FIGHTS ON ITS OWN RADAR'}<small>${ib ? 'Every radar feeds one track per target. Launchers can fire on another unit\'s track, and the system picks the shooter. Friendly fighters are matched to their Link 16 position reports.' : 'Batteries learn of each other\'s engagements about four seconds late, so two can fire at one missile. Track pictures arrive with a lag; the same target can carry two numbers, and crossing tracks can swap.'}</small></span>
+    <span class="sl">DATA LINK</span><span class="sv ${duals ? 'bad' : 'ok'}">${ib ? 'IFCN · LATENCY UNDER 0.5 S' : 'LINK 16 · TRACK LAG 1.5 S'}${!ib ? ` · ${duals} DUAL${duals === 1 ? '' : 'S'} OPEN` : ''}</span>
+    ${rows}
+    <span class="sl">TD NET</span><span class="sv ${S.comms ? 'ok' : 'bad'}">${S.comms ? 'UP' : 'DOWN · BATTERIES FIGHT UNDER LAST ROE'}</span>
+    ${S.thaad ? `<span class="sl">TPY-2</span><span class="sv ${H.thaadOn(S) ? 'ok' : 'bad'}">${!S.thaad.alive ? 'DESTROYED' : S.thaad.emcon ? 'SILENT' : 'RADIATING'} · THAAD ON ITS AI CREW</span>
+    <span class="sl">LAYER</span><span class="sv"><span class="seg"><button type="button" data-layer="WAIT" class="${S.doctrine.LAYER === 'WAIT' ? 'on' : ''}">WAIT FOR THAAD</button><button type="button" data-layer="CONC" class="${S.doctrine.LAYER !== 'WAIT' ? 'on' : ''}">CONCURRENT</button></span></span>` : ''}
+    ${S.cuas.length ? `<span class="sl">C-UAS</span><span class="sv"><span class="seg"><button type="button" data-cuasauto="1" class="${S.cuasAuto ? 'on' : ''}">AUTO</button><button type="button" data-cuasauto="0" class="${S.cuasAuto ? '' : 'on'}">ON CALL</button></span><small>${S.st.cuasKills} kills</small></span>` : ''}
+  </div><div class="ph"><span>ACTIVE FAULTS · ${S.faults.length}</span></div>${S.faults.length ? S.faults.map(f => `<div class="flt"><div class="fh"><b>BIT ${f.code}</b><span>${esc(f.title)}</span></div><div class="fe">${esc(f.effect)} · Alpha's crew is on it</div></div>`).join('') : '<div class="qempty">BIT clean across the battalion.</div>'}`, 'sys');
+}
 function renderSystem(){
+  if (S.bn) return renderBnSystem();
   const b = S.bat, on = H.radarOn(S);
   const st = !b.alive ? 'DESTROYED' : b.emcon ? 'SILENT · EMCON' : b.reorient > 0 ? `REORIENTING ${Math.ceil(b.reorient)} s` : b.displace > 0 ? `MARCH ORDER ${Math.ceil(b.displace)} s` : b.epp > 0 ? 'NO POWER' : b.radarFault ? 'RADIATING · DEGRADED' : 'RADIATING';
   const tp = S.radar.trackPct, rng = Math.round(S.radar.searchF * (b.half < 60 ? 125 : 100) * (b.radarFault ? .6 : 1));
@@ -1033,7 +1265,18 @@ function renderSystem(){
     ${S.cuas.length ? `<span class="sl">C-UAS</span><span class="sv"><span class="seg"><button type="button" data-cuasauto="1" class="${S.cuasAuto ? 'on' : ''}">AUTO</button><button type="button" data-cuasauto="0" class="${S.cuasAuto ? '' : 'on'}">ON CALL</button></span><small>${S.cuas.map(c => esc(c.name) + (c.type === 'COY' ? ' ' + c.left + ' left' : ' gun')).join(' · ')} · ${S.st.cuasKills} kills</small></span>` : ''}
   </div><div class="ph"><span>ACTIVE FAULTS · ${S.faults.length}</span></div>${faults || '<div class="qempty">BIT clean. No active faults.</div>'}`, 'sys');
 }
+function renderBoard(){ // the battalion status board: grease pencil on acetate
+  const st = S.st, row = f => { const Ls = S.launchers.filter(L => L.fu === f.id && !L.dead), m = Ls.reduce((a, L) => a + L.MSE, 0), g = Ls.reduce((a, L) => a + L.GEMT, 0), fired = S.ev.filter(x => x.k === 'LAUNCH' && x.fu === f.id).length;
+    return `<tr><td class="${f.alive ? 'b' : 'r x'}">${f.id} ${esc(f.name)}</td><td>${f.alive ? (f.emcon ? 'quiet' : f.ltamds ? '360' : pad(Math.round(f.ptl) % 360, 3)) : 'DOWN'}</td><td class="${m < 6 ? 'r' : ''}">${m}</td><td>${g}</td><td>${fired}</td><td class="${f.ctrl === 'HOLD' ? 'r' : 'g'}">${f.ctrl === 'HOLD' ? 'hold' : 'free'}</td></tr>`; };
+  const leak = st.leak, kills = st.kills;
+  setHtml($('#crewPage'), `<div class="board"><h4><span>${esc(S.scn.bty)} · ${S.bn.arch}</span><span>T+${fmtT(S.t)}</span></h4>
+    <table><tr><th>UNIT</th><th>PTL</th><th>MSE</th><th>GEM</th><th>SHOT</th><th>WCS</th></tr>${S.fus.map(row).join('')}</table>
+    <div class="tot"><span class="b">KILLS ${kills}</span><span class="${leak ? 'r' : 'g'}">LEAKERS ${leak}</span><span>RES ${S.reserve.MSE}/${S.reserve.GEMT}</span>${S.thaad ? `<span>THAAD ${H.rounds(S, 'THAAD', false)}</span>` : ''}<span class="${st.dupShots ? 'r' : ''}">DOUBLE SHOTS ${st.dupShots}</span>${S.bn.arch !== 'IBCS' ? `<span>DUALS ${st.duals - st.corr}</span>` : ''}${st.civDebris || st.popHits ? `<span class="r">TOWNS HIT ${st.popHits + st.civDebris}</span>` : ''}</div>
+    <div class="note">${esc(S.bn.arch === 'IBCS' ? 'One picture. Watch the veto line, keep the reserve moving.' : 'Overlap = double shots. Hold the middle batteries if they pile on.')}</div></div>
+    <div class="ph"><span>LATEST ON THE NET</span></div><ol class="tcal">${S.log.filter(l => l.cls === 'net' || l.who === 'TD' || l.who === 'FDC').slice(-8).reverse().map(l => `<li><span>${fmtT(l.t)}</span>${esc(l.text)}</li>`).join('') || '<li>Quiet so far.</li>'}</ol>`, 'crew');
+}
 function renderCrew(){
+  if (S.bn) return renderBoard();
   const t = S.tca, c = H.CREW.find(x => x.id === t.id), bar = (v, cls) => `<span class="bar ${cls || ''}"><i style="width:${Math.round(v * 100)}%"></i></span>`;
   setHtml($('#crewPage'), `<div class="crewc"><div class="cn">${esc(t.name)}</div><div class="eyebrow">TACTICAL CONTROL ASSISTANT · MANSTATION 2</div><p>${esc(c.note)}</p>
     <div class="kv2"><span>SKILL</span>${bar(t.skill)}<span>FATIGUE</span>${bar(t.fatigue, 'warn')}<span>EFFECTIVE</span>${bar(H.tcaEff(S))}</div></div>
@@ -1096,8 +1339,9 @@ function endBattle(){
   if (!S) return;
   VO.stop(); AU.stopAmb();
   const sc = S.score, prev = store.p.best[S.scn.id];
-  if (!B.rewound && (prev == null || sc.total > prev)) store.p.best[S.scn.id] = sc.total;
-  if (!B.rewound && !S.scn.tutorial && store.s.red !== 'scripted') store.d.red = H.learnRed(store.d.red || {}, S);
+  if (!B.rewound && !S.scn.custom && (prev == null || sc.total > prev)) store.p.best[S.scn.id] = sc.total;
+  document.body.classList.remove('light-red', 'light-day');
+  if (!B.rewound && !S.scn.tutorial && !S.scn.custom && store.s.red !== 'scripted') store.d.red = H.learnRed(store.d.red || {}, S);
   const tp = tableResult();
   let unlockedNow = false;
   if (tp && tp.ok){ store.p.tables[S.scn.tutorial.table] = true; if (S.scn.tutorial.table === 8 && !store.p.cert){ store.p.cert = true; unlockedNow = true; } }
@@ -1142,7 +1386,8 @@ function openAAR(tp, unlockedNow, campRes){
           <tr><td>Cost exchange</td><td>${fired ? (st.killCost / Math.max(.1, spent + st.cuasCost)).toFixed(2) + ' : 1' : '—'}${st.cuasKills ? ' · C-UAS killed ' + st.cuasKills + ' drones' : ''}</td></tr>
           <tr><td>Misfires · in-flight failures · uncertain kills</td><td>${st.duds} · ${st.flightFail} · ${st.uncertain}</td></tr>
           ${st.clusterRel ? `<tr><td>Cluster warheads opened · hits</td><td>${st.clusterRel} · ${st.clusterHits}</td></tr>` : ''}
-          <tr><td>Impacts in populated areas</td><td>${st.popHits}</td></tr>
+          <tr><td>Impacts in populated areas${scn.civHarm ? ' · debris falls on towns' : ''}</td><td>${st.popHits}${scn.civHarm ? ' · ' + st.civDebris : ''}</td></tr>
+          ${S.bn ? `<tr><td>Architecture</td><td>${S.bn.arch}</td></tr><tr><td>Duplicate engagements · missiles</td><td>${st.dup} · ${st.dupShots}</td></tr>${S.bn.arch === 'IBCS' ? `<tr><td>Friendlies matched by Link 16 PPLI</td><td>${st.ppli}</td></tr>` : `<tr><td>Dual designations · correlated · swaps</td><td>${st.duals} · ${st.corr} · ${st.swaps}</td></tr>`}<tr><td>Fire unit radars lost</td><td>${st.fuLost}</td></tr>` : ''}
           <tr><td>Kills / misses</td><td>${st.kills} / ${st.miss}</td></tr>
           <tr><td>Leakers to the DAL</td><td>${st.leak}</td></tr>
           <tr><td>Wasted shots</td><td>${st.wasted} (decoy ${st.waste.decoy} · false ${st.waste.fals} · non-DAL ${st.waste.nondal})</td></tr>
@@ -1164,7 +1409,7 @@ function openAAR(tp, unlockedNow, campRes){
   const scnRef = scn, brief = B.brief;
   if (nextTable) $('#aNext').onclick = () => openBrief(nextTable);
   if (B.camp) $('#aCamp').onclick = () => campScreen();
-  $('#aRetry').onclick = () => { if (B.camp){ campScreen(); return; } openBrief(scnRef); BR.seed = brief.seed; $('#bSeed').value = brief.seed; BR.site = brief.site; BR.ptl = brief.ptl; $('#bSites').querySelectorAll('button').forEach((x, i) => x.classList.toggle('on', i === BR.site)); briefDraw(); };
+  $('#aRetry').onclick = () => { if (B.camp){ campScreen(); return; } openBrief(scnRef); BR.seed = brief.seed; $('#bSeed').value = brief.seed; BR.site = brief.site; BR.ptl = brief.ptl; if (brief.ptls) BR.ptls = brief.ptls.slice(); $('#bSites').querySelectorAll('button').forEach((x, i) => x.classList.toggle('on', i === BR.site)); briefDraw(); };
   $('#aRetry').hidden = !!B.camp;
   $('#aNew').onclick = () => openBrief(scnRef); $('#aNew').hidden = !!B.camp;
   $('#aMenu').onclick = () => openMenu();
@@ -1210,13 +1455,13 @@ function drawReplay(){
   if (!RP || UI.screen !== 'aar') return;
   const snap = S.snaps[RP.i]; if (!snap) return;
   const cv = $('#rMap'), {W, H:Hh, dpr} = sizeCanvas(cv), ctx = cv.getContext('2d');
-  const v = {cx:S.bat.x + H.polar(snap.bat.ptl, 40).x, cy:S.bat.y + H.polar(snap.bat.ptl, 40).y, s:Math.min(W, Hh) / 2 / 115, W, H:Hh, tilt:false};
+  const v = S.bn ? {cx:B.view.cx, cy:B.view.cy, s:Math.min(W, Hh) / 2 / Math.max(115, (Math.min(B.view.W, B.view.H) / 2) / B.view.s), W, H:Hh, tilt:false} : {cx:S.bat.x + H.polar(snap.bat.ptl, 40).x, cy:S.bat.y + H.polar(snap.bat.ptl, 40).y, s:Math.min(W, Hh) / 2 / 115, W, H:Hh, tilt:false};
   const hist = {};
   for (let j = Math.max(0, RP.i - 20); j < RP.i; j += 4) for (const e of S.snaps[j].e) if (e[6]) (hist[e[0]] = hist[e[0]] || []).push([e[1], e[2], e[3]]);
   const ents = snap.e.map(e => ({uid:e[0], x:e[1], y:e[2], z:e[3], kind:e[4], truth:e[5], trk:e[6] ? {num:e[6], id:e[7], remote:e[8] === 2, cls:true} : null, vx:e[9], vy:e[10], ball:!!TYPES[e[4]].ballistic, clsLbl:TYPES[e[4]].cls, hist:hist[e[0]]}));
   const evNow = S.ev.filter(x => x.t > snap.t - 1 && x.t <= snap.t && (x.k === 'KILL' || x.k === 'HIT'));
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  drawScope(ctx, v, {mapKey:S.scn.map, bat:{...snap.bat}, launchers:S.launchers, thaad:S.thaad, cuas:S.cuas, assets:S.assets.map((a, i) => ({...a, hp:snap.hp[i]})), ents, ms:snap.m.map(m => ({x:m[0], y:m[1], z:m[2], own:!!m[3]})), neighbors:S.neighbors, truth:RP.truth, bty:S.scn.bty.split(' ')[0],
+  drawScope(ctx, v, {mapKey:S.scn.map, bat:{...snap.bat, half:S.bat.half, rf:S.bat.rf}, fus:S.bn ? S.fus : null, acm:S.scn.acm, launchers:S.launchers, thaad:S.thaad, cuas:S.cuas, assets:S.assets.map((a, i) => ({...a, hp:snap.hp[i]})), ents, ms:snap.m.map(m => ({x:m[0], y:m[1], z:m[2], own:!!m[3]})), neighbors:S.neighbors, truth:RP.truth, bty:S.scn.bty.split(' ')[0],
     fx:evNow.filter(x => x.x != null).map(x => ({k:'impact', x:x.x, y:x.y, t0:0, dur:2})), scars:[]}, 1);
   $('#rT').textContent = 'T+' + fmtT(snap.t);
 }
@@ -1300,12 +1545,97 @@ function theaterMap(k, st){
   </svg>`;
 }
 
+// ---------- scenario editor ----------
+let ED = null;
+const MIX_LBL = {SRBM:'Short-range ballistic', MRBM:'Medium-range ballistic', MRBMC:'Cluster warhead', MARV:'Maneuvering warhead', ABM:'Aeroballistic (Kinzhal-class)', CM:'Cruise missile', OWA:'One-way attack drone', DECOY:'Decoy drone', FTR:'Fighter-bomber', JAM:'Stand-off jammer', HELO:'Attack helicopter'};
+function edDefault(){ return {base:'me12', name:'My raid', lo:20, hi:80, dur:660, wcs:'TIGHT', fr:2, dead:1, civil:1, faults:'normal', seed:randSeed(), mix:{SRBM:4, MRBM:6, MRBMC:0, MARV:0, ABM:0, CM:4, OWA:16, DECOY:6, FTR:0, JAM:0, HELO:0}}; }
+function openEditor(cfg){
+  show('edit'); AU.stopAmb();
+  ED = cfg ? JSON.parse(JSON.stringify(cfg)) : (ED || edDefault());
+  const bases = SCN.filter(x => !x.tutorial && !x.endgame && !x.custom);
+  const opt = (v, t, cur) => `<option value="${esc(v)}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(t)}</option>`;
+  const seg = (id, opts, cur) => `<div class="seg" id="${id}">${opts.map(o => `<button type="button" data-v="${o[0]}" class="${String(o[0]) === String(cur) ? 'on' : ''}">${o[1]}</button>`).join('')}</div>`;
+  $('#editBody').innerHTML = `<button class="btn sm" type="button" id="eBack">← Menu</button>
+    <div class="eyebrow" style="margin-top:14px">SCENARIO EDITOR</div><h2>Build a raid</h2>
+    <p class="mintro">Pick a layout, shape the raid, and fight it. The share code carries the whole raid: anyone who loads it gets the same threats at the same times.</p>
+    <div class="ed"><div>
+      <div class="fld"><label class="eyebrow">LAYOUT</label><select id="eBase">${bases.map(b => opt(b.id, `${b.bn ? 'Battalion · ' : ''}${b.name} · ${b.place}`, ED.base)).join('')}</select></div>
+      <div class="fld"><label class="eyebrow">NAME</label><input type="text" id="eName" maxlength="40" value="${esc(ED.name)}"></div>
+      <h3>Threat axis and timing</h3>
+      <div class="mix"><span>From bearing</span><input type="range" id="eLo" min="0" max="359" value="${ED.lo}"><b id="eLoV">${pad(ED.lo, 3)}</b>
+        <span>To bearing</span><input type="range" id="eHi" min="0" max="359" value="${ED.hi % 360}"><b id="eHiV">${pad(ED.hi % 360, 3)}</b>
+        <span>Raid length</span><input type="range" id="eDur" min="300" max="1200" step="30" value="${ED.dur}"><b id="eDurV">${Math.round(ED.dur / 60)}m</b></div>
+      <h3>Threat mix</h3>
+      <div class="mix" id="eMix">${H.MIX_KEYS.map(k => `<span>${esc(MIX_LBL[k])}</span><input type="range" data-k="${k}" min="0" max="${['OWA','DECOY'].includes(k) ? 60 : 24}" value="${ED.mix[k] || 0}"><b id="eM-${k}">${ED.mix[k] || 0}</b>`).join('')}</div>
+      <h3>Airspace and rules</h3>
+      <div class="opts"><label>WCS</label>${seg('eWcs', [['HOLD','HOLD'], ['TIGHT','TIGHT'], ['FREE','FREE']], ED.wcs)}
+        <label>FRIENDLY AIR</label><div class="mix" style="grid-template-columns:minmax(0,1fr) 34px"><input type="range" id="eFr" min="0" max="6" value="${ED.fr}"><b id="eFrV">${ED.fr}</b></div>
+        <label>DEAD MODE 4</label>${seg('eDead', [[1,'ONE STRAYS'], [0,'ALL SQUAWK']], ED.dead ? 1 : 0)}
+        <label>AIRLINERS</label>${seg('eCiv', [[1,'ON'], [0,'OFF']], ED.civil ? 1 : 0)}
+        <label>FAULTS</label>${seg('eFlt', [['normal','ON'], ['none','OFF']], ED.faults)}</div>
+    </div><div>
+      <div class="mapbox" id="eMapBox"><canvas id="eMap"></canvas><div class="maphint">THREAT AXIS PREVIEW</div></div>
+      <p class="ed sum" id="eSum" style="display:block"></p>
+      <div class="go" style="margin-top:4px"><button class="btn primary big" type="button" id="eGo">Brief this raid</button></div>
+      <h3>Share code</h3><div class="fld"><textarea id="eCode" readonly></textarea><div><button class="btn sm" type="button" id="eCopy">Copy code</button> <button class="btn sm" type="button" id="eSave">Save to my raids</button></div></div>
+      <h3>Load a code</h3><div class="fld"><input type="text" id="eIn" placeholder="HT4-…" aria-label="Share code"><div><button class="btn sm" type="button" id="eLoad">Load</button> <span class="eyebrow" id="eMsg" style="letter-spacing:.04em"></span></div></div>
+      <h3>My raids</h3><div class="saved" id="eSaved"></div>
+    </div></div>`;
+  const upd = () => {
+    $('#eLoV').textContent = pad(ED.lo, 3); $('#eHiV').textContent = pad(ED.hi % 360, 3); $('#eDurV').textContent = Math.round(ED.dur / 60) + 'm'; $('#eFrV').textContent = ED.fr;
+    H.MIX_KEYS.forEach(k => $('#eM-' + k).textContent = ED.mix[k] || 0);
+    $('#eCode').value = H.encodeCustom(ED);
+    const scn = H.buildCustom(ED, SCN), n = H.MIX_KEYS.reduce((a, k) => a + (ED.mix[k] || 0), 0), bal = ['SRBM','MRBM','MRBMC','MARV','ABM'].reduce((a, k) => a + (ED.mix[k] || 0), 0);
+    const ints = scn ? (scn.bn ? scn.bn.units.reduce((a, u, i) => a + (i ? u.launchers : scn.launchers).reduce((b, L) => b + L[1], 0), 0) : scn.launchers.reduce((a, L) => a + L[1], 0)) + scn.reserve.MSE : 0;
+    $('#eSum').textContent = scn ? `${n} threats, ${bal} ballistic, over ${Math.round(ED.dur / 60)} minutes. The layout carries ${ints} PAC-3 MSE${scn.thaad ? ' and a THAAD battery' : ''}${scn.bn ? ', four batteries' : ''}. ${bal * 2 > ints ? 'Ripple fire will not last: plan on shoot-look-shoot.' : ''}` : '';
+    edDraw(scn);
+  };
+  const bindSeg = (id, key, conv) => $('#' + id).querySelectorAll('button').forEach(b => b.onclick = () => { ED[key] = conv(b.dataset.v); $('#' + id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); upd(); });
+  $('#eBack').onclick = () => openMenu('ME');
+  $('#eBase').onchange = ev => { ED.base = ev.target.value; upd(); };
+  $('#eName').oninput = ev => { ED.name = ev.target.value; upd(); };
+  $('#eLo').oninput = ev => { ED.lo = +ev.target.value; upd(); };
+  $('#eHi').oninput = ev => { ED.hi = +ev.target.value; if (ED.hi < ED.lo) ED.hi += 360; upd(); };
+  $('#eDur').oninput = ev => { ED.dur = +ev.target.value; upd(); };
+  $('#eFr').oninput = ev => { ED.fr = +ev.target.value; upd(); };
+  $('#eMix').oninput = ev => { const k = ev.target.dataset.k; if (k){ ED.mix[k] = +ev.target.value; upd(); } };
+  bindSeg('eWcs', 'wcs', v => v); bindSeg('eDead', 'dead', v => +v); bindSeg('eCiv', 'civil', v => +v); bindSeg('eFlt', 'faults', v => v);
+  $('#eGo').onclick = () => { const scn = H.buildCustom(ED, SCN); if (scn) openBrief(scn); };
+  $('#eCopy').onclick = () => { const c = $('#eCode'); c.select(); try { navigator.clipboard.writeText(c.value).then(() => $('#eMsg').textContent = 'Copied.', () => document.execCommand('copy')); } catch (e) { try { document.execCommand('copy'); } catch (e2) {} } $('#eMsg').textContent = 'Copied.'; };
+  $('#eSave').onclick = () => { store.d.custom = [{name:ED.name, code:H.encodeCustom(ED)}, ...store.d.custom.filter(x => x.name !== ED.name)].slice(0, 12); store.save(); renderSaved(); };
+  $('#eLoad').onclick = () => { const c = H.decodeCustom($('#eIn').value); if (!c || !SCN.find(x => x.id === c.base)){ $('#eMsg').textContent = 'That code does not decode to a raid.'; return; } openEditor(c); $('#eMsg').textContent = 'Loaded.'; };
+  const renderSaved = () => { $('#eSaved').innerHTML = store.d.custom.length ? store.d.custom.map((x, i) => `<div><span>${esc(x.name)}</span><span><button class="btn sm" type="button" data-open="${i}">Open</button> <button class="btn sm" type="button" data-del="${i}">Delete</button></span></div>`).join('') : '<p class="eyebrow">Nothing saved yet.</p>';
+    $('#eSaved').onclick = ev => { const o = ev.target.closest('[data-open]'), d = ev.target.closest('[data-del]'); if (o){ const c = H.decodeCustom(store.d.custom[+o.dataset.open].code); if (c) openEditor(c); } if (d){ store.d.custom.splice(+d.dataset.del, 1); store.save(); renderSaved(); } }; };
+  renderSaved(); requestAnimationFrame(upd);
+}
+function edDraw(scn){
+  if (!scn || UI.screen !== 'edit') return;
+  const cv = $('#eMap'), {W, H:Hh, dpr} = sizeCanvas(cv), ctx = cv.getContext('2d'), P = pal();
+  const c = scn.bn ? {x:scn.bn.units.reduce((a, u) => a + u.x, 0) / scn.bn.units.length, y:scn.bn.units.reduce((a, u) => a + u.y, 0) / scn.bn.units.length} : scn.sites[0];
+  const v = {cx:c.x, cy:c.y, s:Math.min(W, Hh) / 2 / 170, W, H:Hh, tilt:false};
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const fus = scn.bn ? scn.bn.units.map(u => ({...u, half:60, rf:1, alive:true, ctrl:'AUTO'})) : null;
+  drawScope(ctx, v, {mapKey:scn.map, bat:{x:(fus ? fus[0] : scn.sites[0]).x, y:(fus ? fus[0] : scn.sites[0]).y, ptl:scn.ptl, half:60, on:true}, fus, acm:scn.acm, assets:scn.assets.map(a => ({...a, hpMax:a.hp, hp:a.hp})), ents:[], neighbors:[], labelsAlways:false, bty:'', thaad:scn.thaad ? {...scn.thaad, half:60, alive:true} : null, cuas:scn.cuas || [], seat:'PAT'}, 0);
+  const span = ((ED.hi - ED.lo) + 360) % 360 || 60;
+  ctx.fillStyle = 'rgba(255,75,60,.10)'; ctx.beginPath(); const q0 = proj(v, c.x, c.y); ctx.moveTo(q0[0], q0[1]);
+  for (let a = ED.lo; a <= ED.lo + span + .1; a += 2){ const p = H.polar(a, 165, c), q = proj(v, p.x, p.y); ctx.lineTo(q[0], q[1]); } ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = P.red; ctx.globalAlpha = .7; ctx.stroke(); ctx.globalAlpha = 1;
+  for (const w of scn.waves){ const p = H.polar(w.brg, Math.min(160, 60 + w.t / ED.dur * 100), c), q = proj(v, p.x, p.y); ctx.fillStyle = TYPES[w.type].ballistic ? P.red : P.amber; ctx.beginPath(); ctx.arc(q[0], q[1], 2.5 + Math.min(5, w.n / 3), 0, 7); ctx.fill(); }
+}
+
 // ---------- library ----------
 function openLib(){
   show('lib');
   const rows = Object.entries(TYPES).filter(([k]) => k !== 'FALSE').map(([k, t]) => `<tr><td class="nm">${esc(t.name)}</td><td>${esc(t.analog)}</td><td class="num">${t.cls}</td><td>${esc(t.role)}</td><td class="num">${t.ballistic ? Math.round(t.speed * 1000) + ' m/s' : Math.round(t.speed * 1944) + ' kt'}</td><td class="num">${t.truth === 'H' ? Math.round(t.pk.GEMT * 100) + '% / ' + Math.round(t.pk.MSE * 100) + '%' + (t.pk.THAAD ? ' / ' + Math.round(t.pk.THAAD * 100) + '%' : '') : '—'}</td></tr>`).join('');
   const wr = Object.values(WEAPONS).map(w => `<tr><td class="nm">${w.name}</td><td>${esc(w.full)}</td><td>${w.fuze}</td><td class="num">${w.rAir ? w.rAir + ' km' : '—'}</td><td class="num">${w.rTbm} km</td><td class="num">${w.minAlt ? w.minAlt + '–' : ''}${w.maxAlt} km</td><td class="num">$${w.cost}M</td></tr>`).join('');
-  const g = [['Tactical Control Officer (TCO)','You. The officer at manstation one in the Engagement Control Station who decides identity and engagements.'],['Tactical Control Assistant (TCA)','Your crewmate at manstation two. Calls tracks, faults and launches.'],['Tactical Director (TD)','The battalion officer who runs the air battle and issues orders.'],['Primary Target Line (PTL)','The centre of the radar’s 120° search sector. Set at emplacement; changing it takes the radar offline.'],['Defended Asset List (DAL)','The prioritized list of what you protect. Priority 1 matters most.'],['Air Defense Warning (ADW)','White: attack unlikely. Yellow: attack probable. Red: attack imminent or under way.'],['Weapons Control Status (WCS)','Hold: self-defense only. Tight: fire only at tracks identified Hostile. Free: fire at anything not identified Friend.'],['Fire control orders','Engage, Hold Fire (stop and destroy missiles in flight), Cease Fire (launch nothing), Cover.'],['Engagement modes','Manual: you approve every shot. Semiautomatic: you identify, the computer engages Hostile DAL threats. Automatic: the computer also identifies, with a veto window.'],['IFF','Mode 4 VALID = friendly military transponder. Mode 3/C = civil squawk and altitude. NO RESP = silent.'],['Shot doctrine','Single shot, Ripple (two missiles 1.5 s apart), or Shoot-Look-Shoot (one missile, assess, fire again).'],['EMCON','Emission control. Silencing the radar defeats anti-radiation missiles and blinds you at the same time.'],['ALT VAR','Altitude variation of a track over the last 15 seconds. Decoys hold a fixed altitude.'],['Remote track','A track passed by another battery over the network. You need your own radar track to fire.']];
+  const g = [['Tactical Control Officer (TCO)','You. The officer at manstation one in the Engagement Control Station who decides identity and engagements.'],['Tactical Control Assistant (TCA)','Your crewmate at manstation two. Calls tracks, faults and launches.'],['Tactical Director (TD)','The battalion officer who runs the air battle and issues orders.'],['Primary Target Line (PTL)','The centre of the radar’s 120° search sector. Set at emplacement; changing it takes the radar offline.'],['Defended Asset List (DAL)','The prioritized list of what you protect. Priority 1 matters most.'],['Air Defense Warning (ADW)','White: attack unlikely. Yellow: attack probable. Red: attack imminent or under way.'],['Weapons Control Status (WCS)','Hold: self-defense only. Tight: fire only at tracks identified Hostile. Free: fire at anything not identified Friend.'],['Fire control orders','Engage, Hold Fire (stop and destroy missiles in flight), Cease Fire (launch nothing), Cover.'],['Engagement modes','Manual: you approve every shot. Semiautomatic: you identify, the computer engages Hostile DAL threats. Automatic: the computer also identifies, with a veto window.'],['IFF','Mode 4 VALID = friendly military transponder. Mode 3/C = civil squawk and altitude. NO RESP = silent.'],['Shot doctrine','Single shot, Ripple (two missiles 1.5 s apart), or Shoot-Look-Shoot (one missile, assess, fire again).'],['EMCON','Emission control. Silencing the radar defeats anti-radiation missiles and blinds you at the same time.'],['ALT VAR','Altitude variation of a track over the last 15 seconds. Decoys hold a fixed altitude.'],['Remote track','A track passed by another battery over the network. You need your own radar track to fire.'],
+    ['Fire Direction Centre (FDC)','The battalion cell that directs several fire units: it sets their weapons status, assigns engagements and keeps them from shooting the same target.'],
+    ['IBCS','Integrated Air and Missile Defense Battle Command System. Fuses every radar into one composite track per target and lets any launcher fire on any sensor’s track.'],
+    ['LTAMDS','Lower Tier Air and Missile Defense Sensor, the 360° radar replacing the MPQ-65 sector radar. In the game it comes with IBCS.'],
+    ['Link 16 and PPLI','The tactical data link. Aircraft broadcast their own position (PPLI), so a fighter with a dead transponder can still be known as friendly.'],
+    ['Dual designation','One target carrying two track numbers because two radars reported it and the link failed to correlate them. Correlate it so batteries see one target.'],
+    ['Track swap','Two tracks that cross can come out with each other’s numbers and identities. Re-interrogate both after any merge.'],
+    ['Airspace control measures','Minimum-risk routes (lanes) and CAP boxes where friendlies are expected; weapons free zones where anything silent is fair game; base defense zones around airfields.']];
   $('#libBody').innerHTML = `<button class="btn sm" type="button" id="lBack">← Menu</button>
     <div class="eyebrow" style="margin-top:14px">ENCYCLOPEDIA</div><h2>Threat library</h2>
     <p class="mintro">Every number below is a game value: rounded, tuned for play, and built only from open sources. Slow movers (drones, helicopters) fly about four times real speed to fit a 10 to 15 minute battle.</p>
@@ -1318,7 +1648,7 @@ function openLib(){
     <h2 style="margin-top:28px">Open sources</h2>
     <ul class="intel"><li><a href="https://en.wikipedia.org/wiki/MIM-104_Patriot" target="_blank" rel="noopener" style="color:var(--cyan)">MIM-104 Patriot (Wikipedia)</a></li><li><a href="https://www.globalsecurity.org/space/library/policy/army/fm/44-85/Appb.htm" target="_blank" rel="noopener" style="color:var(--cyan)">FM 44-85, Appendix B (GlobalSecurity)</a></li><li><a href="https://militaryembedded.com/radar-ew/sensors/sweden-requests-patriot-configuration-3-in-fms-valued-at-3-2-billion" target="_blank" rel="noopener" style="color:var(--cyan)">Sweden Configuration 3+ FMS notification</a></li><li><a href="https://www.armyrecognition.com/archives/archives-land-defense/land-defense-2023/spain-to-secure-2-8-billion-of-us-patriot-configuration-3-modernized-fire-units" target="_blank" rel="noopener" style="color:var(--cyan)">Spain Configuration 3+ and PDB-8 interface</a></li></ul>
     <h2 style="margin-top:28px">Keys</h2>
-    <p class="mintro">Space acknowledge · 1–5 identity (Friend, Neutral, Unknown, Suspect, Hostile) · I interrogate · E engage · H hold fire · U counter-drone on the hooked drone · V veto · Tab next threat · M cycle mode · G swap Patriot and THAAD seats · R toggle raw returns under the symbols · P pause · [ ] speed · + − zoom · T 3D · C centre · Esc unhook.</p>`;
+    <p class="mintro">Space acknowledge · 1–5 identity (Friend, Neutral, Unknown, Suspect, Hostile) · I interrogate · E engage · H hold fire · U counter-drone on the hooked drone · V veto · Tab next threat · M cycle mode · G swap Patriot and THAAD seats · battalion: B pick the shooter, X correlate a dual designation, click the alert line to act on it · R toggle raw returns under the symbols · P pause · [ ] speed · + − zoom · T 3D · C centre · Esc unhook.</p>`;
   $('#lBack').onclick = () => openMenu();
 }
 
@@ -1333,6 +1663,8 @@ function openSet(){
     ${row('Voice', 'TCA and TD callouts through your browser’s speech engine.', seg('setVoice', [[true,'ON'], [false,'OFF']], s.voice))}
     ${row('Volume', 'Alerts, ambience and voice.', `<input type="range" id="setVol" min="0" max="1" step=".05" value="${s.vol}" style="width:100%;max-width:280px;accent-color:var(--amber)">`)}
     ${row('Radar display', 'Clean is what the operator really sees: a computer-drawn picture with no beam on screen. Beams and Sweep are stylized views: beams shows the phased array hopping its search beam and revisiting tracks; sweep is the rotating beam from earlier versions.', seg('setScan', [['CLEAN','CLEAN'], ['PA','BEAMS'], ['SWEEP','SWEEP']], s.scan || 'CLEAN'))}
+    ${row('Screen physics', 'Phosphor afterglow that fades toward amber, faint burn-in of the range rings, glare that follows your cursor, and light that spills onto the bezel when something flashes.', seg('setCrt', [[true,'ON'], [false,'OFF']], s.crt !== false))}
+    ${row('Shelter lighting', 'Auto runs white light on the training range and red night lighting on operations. Emergency red always takes over on a power fault.', seg('setLight', [['AUTO','AUTO'], ['WHITE','WHITE'], ['RED','RED']], s.light || 'AUTO'))}
     ${row('Track symbols', 'House frames, or filled frames with a class letter in the style of MIL-STD-2525.', seg('setSym', [['house','HOUSE'], ['2525','2525 FILLED']], s.sym || 'house'))}
     ${row('Expert mode', 'ENGAGE fires on tap and confirmation prompts disappear, except ROE warnings.', seg('setExp', [[false,'OFF'], [true,'ON']], s.expert))}
     ${row('Equipment faults', 'How often the radar, launchers and power plant break during a battle.', seg('setDiff', [['off','OFF'], ['normal','NORMAL'], ['hard','HARD']], s.diff))}
@@ -1342,7 +1674,7 @@ function openSet(){
     ${row('Reset progress', 'Clears passed tables, best scores and campaigns on this device.', '<button class="btn danger sm" type="button" id="setReset">Reset</button>')}`;
   const bind = (id, key, conv, after) => $('#' + id).querySelectorAll('button').forEach(b => b.onclick = () => { if (id === 'setSkin' && b.dataset.v === 'legacy' && !unlocked()) return; s[key] = conv(b.dataset.v); store.save(); $('#' + id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); after && after(); });
   bind('setSkin', 'skin', v => v, applySkin); bind('setVoice', 'voice', v => v === 'true', () => { if (!s.voice) VO.stop(); });
-  bind('setExp', 'expert', v => v === 'true'); bind('setRed', 'red', v => v); bind('setSym', 'sym', v => v); bind('setScan', 'scan', v => v);
+  bind('setExp', 'expert', v => v === 'true'); bind('setRed', 'red', v => v); bind('setSym', 'sym', v => v); bind('setScan', 'scan', v => v); bind('setCrt', 'crt', v => v === 'true', applySkin); bind('setLight', 'light', v => v);
   $('#setRedReset').onclick = () => { store.d.red = {}; store.save(); openSet(); }; bind('setDiff', 'diff', v => v); bind('setSpd', 'speed', v => +v); bind('setUnl', 'unlockAll', v => v === 'true', () => { applySkin(); openSet(); });
   $('#setVol').oninput = ev => { s.vol = +ev.target.value; AU.vol(s.vol); store.save(); };
   $('#setReset').onclick = () => modal('Reset progress', '<p>This clears every passed table, best score and campaign on this device.</p>', [{t:'Cancel'}, {t:'Reset', cls:'danger', f:() => { store.d.p = {tables:{}, best:{}, cert:false, plays:0}; store.d.camp = {}; store.save(); applySkin(); openSet(); }}], true);

@@ -821,7 +821,7 @@ function launch(S, p, e, L, sol){
   else if (e.T.ballistic && !a.dal){ S.st.wasted++; S.st.waste.nondal++; }
   if (p.w === 'MSE' && e.T.cls === 'UAV') S.st.mseDrone++;
   tone(S, 'launch');
-  ev(S, 'LAUNCH', `${WEAPONS[p.w].name} away, launcher ${L.id} → track ${p.trk}`, {trk:p.trk, uid:e.uid});
+  ev(S, 'LAUNCH', `${WEAPONS[p.w].name} away, launcher ${L.id} → track ${p.trk}`, {trk:p.trk, uid:e.uid, fu:p.fu});
   if (p.shots === 0 && p.tier !== 'UT' && !S.bn) say(S, 'TCA', `Missile away, launcher ${L.id}.`, {pri:1, silent:S.rng() < .35});
   if (lsTotal(L) === 0 && p.tier !== 'UT' && !S.bn) say(S, 'TCA', `Launcher ${L.id} empty.`, {pri:2});
   S.out.push({k:'launch', x:L.x, y:L.y, ut:p.tier === 'UT'});
