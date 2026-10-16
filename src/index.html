@@ -5,18 +5,18 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&family=VT323&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Permanent+Marker&family=VT323&display=swap">
 <style>/*@@CSS@@*/</style>
 
 <div id="app">
   <section id="scr-title" class="screen title">
     <canvas id="titleCanvas" aria-hidden="true"></canvas>
     <div class="title-inner">
-      <div class="eyebrow">Version 3.0 · AN/MSQ-132 · Engagement Control Station · Patriot Config 3+</div>
+      <div class="eyebrow">Version 4.0 · AN/MSQ-132 · Engagement Control Station · Battalion FDC · IBCS</div>
       <h1 class="wordmark">Hostile<br><span>Track</span></h1>
       <p class="tagline">You are the Tactical Control Officer in a Patriot fire unit. Identify what is in the sky, decide what deserves a missile, and make the load last.</p>
       <button id="btnEnter" class="btn primary big" type="button">Enter the shelter</button>
-      <p class="fine">Sound and voice play once you enter. Headphones help. Every performance figure is a labelled game value built from open sources; scenarios are inspired by public events from 2019 to 2025.</p>
+      <p class="fine">Sound and voice play once you enter. Headphones help. Every performance figure is a labelled game value built from open sources; scenarios are inspired by public events from 2019 to 2026.</p>
     </div>
   </section>
 
@@ -33,7 +33,9 @@
         <button type="button" data-tab="TRN">Training</button>
         <button type="button" data-tab="ME">Middle East</button>
         <button type="button" data-tab="EU">Europe</button>
+        <button type="button" data-tab="BN">Battalion</button>
         <button type="button" data-tab="CAMP">Campaign</button>
+        <button type="button" data-tab="EDIT">Editor</button>
       </nav>
       <div id="menuBody"></div>
     </div>
@@ -50,7 +52,7 @@
       <button id="sPtl" class="tbtn" type="button">PTL 000</button>
       <button id="sDisp" class="tbtn" type="button" hidden>DISPLACE</button>
       <button id="sRadio" class="tbtn rbtn" type="button">RADIO</button>
-      <b id="sSeat" class="seat" hidden>PATRIOT ECS</b>
+      <b id="sSeat" class="seat" hidden>PATRIOT ECS</b><b id="sArch" class="seat arch" hidden>LEGACY</b>
       <div class="st-grow"></div>
       <div class="st-grp hide-s" title="System lamps"><span class="st-lbl">SYS</span><div class="lamps sys" id="sSys"><i data-k="RAD">RAD</i><i data-k="TPY" hidden>TPY</i><i data-k="COM">COM</i><i data-k="PWR">PWR</i><i data-k="MOPP">MOPP</i></div></div>
       <div class="st-grp hide-s hide-m" title="Radar time: search share and tracks held"><span class="st-lbl">RADAR</span><span class="rtg"><i id="sRtg"></i></span><b id="sRt">100%</b></div>
@@ -65,7 +67,8 @@
       <ol id="log"></ol>
     </aside>
     <main class="scope-wrap" id="scopeWrap"><div class="crt">
-      <canvas id="scope"></canvas><div class="glass" aria-hidden="true"></div>
+      <canvas id="scope"></canvas><div class="burn" aria-hidden="true"></div><div class="glass" aria-hidden="true"></div>
+      <div class="alertline" id="alertLine" hidden></div>
       <div class="scope-ctl"><button id="zIn" type="button" title="Zoom in">+</button><button id="zOut" type="button" title="Zoom out">−</button><button id="zCtr" type="button" title="Centre on battery">◎</button><button id="z3d" type="button" title="Tilt to 3D view">3D</button><button id="zVid" type="button" title="Symbols only, or symbols plus raw returns">SYN</button></div>
       <div class="scope-info" id="scopeInfo"></div>
       <div class="radar-state" id="radarState" hidden></div>
@@ -102,6 +105,7 @@
   <section id="scr-camp" class="screen page" hidden><div id="campBody" class="page-wrap"></div></section>
   <section id="scr-lib" class="screen page" hidden><div id="libBody" class="page-wrap"></div></section>
   <section id="scr-set" class="screen page" hidden><div id="setBody" class="page-wrap"></div></section>
+  <section id="scr-edit" class="screen page" hidden><div id="editBody" class="page-wrap"></div></section>
 </div>
 
 <div id="modal" class="modal" hidden><div class="modal-card" id="mCard"><h3 id="mTitle"></h3><div id="mBody"></div><div id="mBtns" class="mbtns"></div></div></div>

@@ -145,7 +145,7 @@ function createSim(scn, o = {}){
     assets:scn.assets.map(a => ({...a, hpMax:a.hp || 2, hp:a.hp || 2})),
     acks:[], ceaseUntil:-1, spawns:[], si:0, orderQ:[], faultQ:[], threatsLeft:0, threatsTotal:0, lastThreatT:0,
     neighbors:(scn.neighbors || []).map(n => ({...n, on:true, cool:0})),
-    st:{fired:{GEMT:0, MSE:0, THAAD:0}, duds:0, flightFail:0, uncertain:0, clusterRel:0, clusterHits:0, popHits:0, cuasKills:0, cuasCost:0, killCost:0, nearMiss:0, tpyLost:false, spent:0, killVal:0, wasted:0, waste:{decoy:0, fals:0, nondal:0, protect:0}, mseDrone:0, viol:0, lateAck:0, misId:0, frat:0, hitsW:0, potW:0, leak:0, kills:0, miss:0, radarLost:false, lsLost:0, vetoes:0, debris:0, engMissed:0, outSector:0, holdSaves:0},
+    st:{fired:{GEMT:0, MSE:0, THAAD:0}, duds:0, flightFail:0, uncertain:0, clusterRel:0, clusterHits:0, popHits:0, cuasKills:0, cuasCost:0, killCost:0, nearMiss:0, tpyLost:false, spent:0, killVal:0, wasted:0, waste:{decoy:0, fals:0, nondal:0, protect:0}, mseDrone:0, viol:0, lateAck:0, misId:0, frat:0, hitsW:0, potW:0, leak:0, kills:0, miss:0, radarLost:false, lsLost:0, vetoes:0, debris:0, engMissed:0, outSector:0, holdSaves:0, fuLost:0, dup:0, dupShots:0, swaps:0, duals:0, corr:0, civDebris:0, ppli:0, bnVeto:0},
     xp:o.xp || 0, tut:scn.tutorial || null, diff:o.difficulty || 'normal',
     ended:false, endAt:null, endReason:'', idLog:{}, n:0, inputs:[], replayQ:null, faults:[], radar:{load:0, searchF:1, trackPct:8}, radiateT:0, sbw:[], sbwLast:-99, mopp:0, comms:true, dispFault:false, ewrLost:false, wccSlow:0, nextSnap:0, nextAuto:0, firstHostile:false, firstTbm:false, idCount:0,
   };
@@ -165,6 +165,8 @@ function createSim(scn, o = {}){
     S.reserve.THAAD = take('THAAD', (scn.reserve && scn.reserve.THAAD) || 0); S.loaded.THAAD += S.reserve.THAAD;
   }
   S.seat = S.thaad && (o.seat || scn.seat) === 'THAAD' ? 'THAAD' : 'PAT';
+  S.fus = [S.bat];
+  if (scn.bn) setupBn(S, o, take);
   S.cuas = (scn.cuas || []).map((c, i) => ({...c, id:'C' + (i + 1), left:c.n || 0, busy:0}));
   S.cuasAuto = o.cuasAuto !== false;
   S.reserve.MSE = take('MSE', (scn.reserve && scn.reserve.MSE) || 0);
@@ -172,6 +174,7 @@ function createSim(scn, o = {}){
   S.loaded.MSE += S.reserve.MSE; S.loaded.GEMT += S.reserve.GEMT;
   S.opts = JSON.parse(JSON.stringify(o));
   S.tca = makeTca(o.tca);
+  if (S.bn) S.tca.delegate = {...S.tca.delegate, reload:true};
   placeLaunchers(S);
   S.red = planRed(S, o.red);
   S.redWaves = [].concat(...S.red.map(t => t.waves || []));
@@ -183,15 +186,17 @@ function createSim(scn, o = {}){
 }
 
 function placeLaunchers(S){
-  const P = S.launchers.filter(L => L.type !== 'THAAD'), n = P.length, b = S.bat;
-  P.forEach((L, i) => { const p = polar(b.ptl + 180 + (i - (n - 1) / 2) * 30, 1.3 + (i % 2) * .5, b); L.x = p.x; L.y = p.y; });
+  for (const b of S.fus || [S.bat]){
+    const P = S.launchers.filter(L => L.type !== 'THAAD' && (!S.bn || L.fu === b.id)), n = P.length;
+    P.forEach((L, i) => { const p = polar(b.ptl + 180 + (i - (n - 1) / 2) * 30, 1.3 + (i % 2) * .5, b); L.x = p.x; L.y = p.y; });
+  }
   if (S.thaad){ const T = S.launchers.filter(L => L.type === 'THAAD'), m = T.length; T.forEach((L, i) => { const p = polar(S.thaad.ptl + 180 + (i - (m - 1) / 2) * 24, 2 + (i % 2) * .6, S.thaad); L.x = p.x; L.y = p.y; }); }
 }
 const lsTotal = L => (L.MSE || 0) + (L.GEMT || 0) + (L.THAAD || 0);
 function thaadOn(S){ const T = S.thaad; return !!T && T.alive && !T.emcon; }
 
 function assetById(S, id){ return S.assets.find(a => a.id === id); }
-function priOf(S, id){ if (id === 'BTY' || id === 'TPY') return 1; const a = assetById(S, id); return a ? a.pri : 3; }
+function priOf(S, id){ if (id === 'BTY' || id === 'TPY' || (id && id.startsWith && id.startsWith('FU:'))) return 1; const a = assetById(S, id); return a ? a.pri : 3; }
 
 function missPoint(S){
   for (let k = 0; k < 30; k++){
@@ -205,6 +210,7 @@ function resolveTarget(S, tgt){
   if (tgt === 'miss') return {pt:missPoint(S), id:null};
   if (tgt === 'battery') return {pt:{x:S.bat.x + (S.rng() - .5) * .4, y:S.bat.y + (S.rng() - .5) * .4}, id:'BTY'};
   if (tgt === 'tpy' && S.thaad) return {pt:{x:S.thaad.x + (S.rng() - .5) * .4, y:S.thaad.y + (S.rng() - .5) * .4}, id:'TPY'};
+  if (tgt && tgt.startsWith && tgt.startsWith('fu:')){ const f = fuById(S, tgt.slice(3)) || S.bat; return {pt:{x:f.x + (S.rng() - .5) * .4, y:f.y + (S.rng() - .5) * .4}, id:f === S.bat && !S.bn ? 'BTY' : 'FU:' + f.id}; }
   const a = assetById(S, tgt);
   if (!a) return {pt:missPoint(S), id:null};
   return {pt:{x:a.x + (S.rng() - .5) * .6, y:a.y + (S.rng() - .5) * .6}, id:a.id};
@@ -254,9 +260,10 @@ function buildSpawns(S){
   for (const f of scn.friendly || []){
     const cor = map.corridors[f.cor]; if (!cor) continue;
     for (let i = 0; i < f.n; i++){
-      const iffFail = (f.iffFail || []).includes(i);
+      const iffFail = (f.iffFail || []).includes(i), stray = (f.stray || []).includes(i);
       addSpawn(S, f.t + i * 14, () => {
         let pts = cor.pts.map(P); if (f.out) pts.reverse();
+        if (stray){ const a = pts[0], b = pts[pts.length - 1], hd = brgOf(b.x - a.x, b.y - a.y), m = polar(hd + 90 * (f.side || 1), f.off || 16, {x:a.x + (b.x - a.x) * .55, y:a.y + (b.y - a.y) * .55}), m2 = polar(hd + 90 * (f.side || 1), (f.off || 16) * .6, {x:a.x + (b.x - a.x) * .85, y:a.y + (b.y - a.y) * .85}); pts = [a, m, m2, b]; }
         const kind = f.type || 'FRD';
         const e = mkEnt(S, kind, {wp:pts, frac:f.out ? 0 : .45, tag:f.tag || null, iffFail, onEnd:'exit', alt:TYPES[kind].alt + (rng() - .5)});
         if (iffFail) e.iffInter = true;
@@ -264,7 +271,7 @@ function buildSpawns(S){
     }
   }
   for (const ot of scn.others || []){
-    addSpawn(S, ot.t, () => mkEnt(S, ot.type, {wp:ot.route.map(P), alt:ot.alt, loop:!!ot.loop, tag:ot.tag || null, onEnd:'exit'}));
+    addSpawn(S, ot.t, () => { const e = mkEnt(S, ot.type, {wp:ot.route.map(P), alt:ot.alt, loop:!!ot.loop, tag:ot.tag || null, onEnd:'exit', iffFail:!!ot.iffFail}); if (ot.iffFail) e.iffInter = true; if (ot.until) e.leaveAt = ot.until; });
   }
   let waves = scn.waves || [];
   if (scn.random) waves = randomWaves(S, scn);
@@ -324,10 +331,10 @@ function spawnThreat(S, w, tg, i){
     const R = tg !== 'miss' ? resolveTarget(S, tg) : {pt:missPoint(S), id:null};
     let wp, role = w.role || 'standoff';
     if (role === 'standoff'){ const rel = polar(brgOf(P0.x - R.pt.x, P0.y - R.pt.y), 50, R.pt); wp = [P0, rel, P0]; }
-    else if (role === 'sead'){ const near = polar(brgOf(P0.x - S.bat.x, P0.y - S.bat.y), 62, S.bat); wp = [P0, near, P0]; }
+    else if (role === 'sead'){ const hm = (w.home && fuById(S, w.home)) || S.bat; const near = polar(brgOf(P0.x - hm.x, P0.y - hm.y), 62, hm); wp = [P0, near, P0]; }
     else { const beyond = polar(brgOf(R.pt.x - P0.x, R.pt.y - P0.y), 120, R.pt); wp = [P0, R.pt, beyond]; }
     const e = mkEnt(S, 'FTR', {wp, alt:w.alt || TYPES.FTR.alt, tag:w.tag, onEnd:'exit'});
-    e.role = role; e.cm = w.cm || 2; e.arm = w.arm || 2; e.armCool = 0; e.cmTargets = (w.targets || []).filter(x => x !== 'miss');
+    e.role = role; if (w.home && fuById(S, w.home)) e.home = fuById(S, w.home); e.cm = w.cm || 2; e.arm = w.arm || 2; e.armCool = 0; e.cmTargets = (w.targets || []).filter(x => x !== 'miss');
     return e;
   }
   // generic air-breathing threat
@@ -366,10 +373,12 @@ const trkName = e => e.trk && e.trk.num ? e.trk.num : '----';
 
 // ---------- radar ----------
 function radarOn(S){ const b = S.bat; return b.alive && !b.emcon && b.reorient <= 0 && b.displace <= 0 && b.epp <= 0; }
-function jamFactor(S, brg, r){
+function radarOnFu(f){ return !!f && f.alive && !f.emcon && !(f.reorient > 0) && !(f.displace > 0) && !(f.epp > 0); }
+const fuById = (S, id) => (S.fus || []).find(f => f.id === id);
+function jamFactor(S, brg, r, src = S.bat){
   let f = 1;
   for (const j of S.ents) if (j.alive && j.kind === 'JAM'){
-    const jb = brgOf(j.x - S.bat.x, j.y - S.bat.y);
+    const jb = brgOf(j.x - src.x, j.y - src.y);
     if (Math.abs(angDiff(brg, jb)) < 5 && r > 30) f = Math.min(f, .35);
   }
   return f;
@@ -379,8 +388,9 @@ function detects(S, src, e, own){
   if (r < .3) return true;
   const brg = brgOf(dx, dy);
   if (Math.abs(angDiff(brg, src.ptl)) > (src.half || RADAR.half)) return false;
-  let R = RADAR.rmax * Math.pow(e.T.rcs, .25);
+  let R = RADAR.rmax * Math.pow(e.T.rcs, .25) * (src.rf || 1);
   if (own){ if (S.bat.radarFault > 0) R *= .6; R *= jamFactor(S, brg, r) * S.radar.searchF * (S.bat.half < 60 ? 1.25 : 1); }
+  else if (src.fuUnit) R *= jamFactor(S, brg, r, src);
   if (r > R) return false;
   if (r > horizon(e.z)) return false;
   if (masked(S.map, src.x, src.y, e.x, e.y, e.z)) return false;
@@ -459,6 +469,7 @@ function tpyDetects(S, e){
   return r <= T.rmax * Math.pow(e.T.rcs / .45, .25) && Math.abs(angDiff(brgOf(dx, dy), T.ptl)) <= T.half;
 }
 function updateTracks(S, dt){
+  if (S.bn) return updateTracksBn(S, dt);
   const on = radarOn(S), own = {x:S.bat.x, y:S.bat.y, ptl:S.bat.ptl, half:S.bat.half}, tOn = thaadOn(S);
   for (const e of S.ents){
     if (!e.alive) continue;
@@ -502,7 +513,7 @@ function predict(S, e, dt){
   if (e.model === 'bal'){ const t = S.t + dt; if (t >= e.t0 + e.T0) return {x:e.I.x, y:e.I.y, z:0, end:true}; const p = balPos(e, t); return {x:p.x, y:p.y, z:p.z, end:false}; }
   if (e.model === 'false') return {x:e.x + e.vx * dt, y:e.y + e.vy * dt, z:e.z, end:false};
   const p = walk(e, e.speed * dt);
-  if (e.kind === 'ARM'){ const d = Math.hypot(p.x - S.bat.x, p.y - S.bat.y); p.z = Math.min(e.alt, d / 9); }
+  if (e.kind === 'ARM'){ const hm = e.home || S.bat, d = Math.hypot(p.x - hm.x, p.y - hm.y); p.z = Math.min(e.alt, d / 9); }
   return p;
 }
 
@@ -535,7 +546,7 @@ function stepEnt(S, e, dt){
   }
   e.vx = (e.x - ox) / dt; e.vy = (e.y - oy) / dt;
   // altitude behaviour
-  if (e.kind === 'ARM'){ const d = Math.hypot(e.x - S.bat.x, e.y - S.bat.y); e.z = Math.min(e.alt, d / 9); }
+  if (e.kind === 'ARM'){ const hm = e.home || S.bat, d = Math.hypot(e.x - hm.x, e.y - hm.y); e.z = Math.min(e.alt, d / 9); }
   else if (e.T.altVar) e.z = e.alt + e.T.altVar * Math.sin(S.t * .23 + e.phase) + e.T.altVar * .5 * Math.sin(S.t * .61 + e.phase * 2);
   else e.z += (e.alt - e.z) * Math.min(1, dt * .2);
   // roles
@@ -553,15 +564,15 @@ function stepEnt(S, e, dt){
     }
     if (e.role === 'sead'){
       e.armCool -= dt;
-      const d = Math.hypot(e.x - S.bat.x, e.y - S.bat.y);
-      if (e.arm > 0 && d < 90 && radarOn(S) && e.armCool <= 0){
+      const hm = e.home || S.bat, d = Math.hypot(e.x - hm.x, e.y - hm.y);
+      if (e.arm > 0 && d < 90 && radarOnFu(hm) && e.armCool <= 0){
         e.arm--; e.armCool = 6;
-        const a = mkEnt(S, 'ARM', {wp:[{x:e.x, y:e.y}, {x:S.bat.x, y:S.bat.y}], alt:e.z, tgt:'BTY', tgtPt:{x:S.bat.x, y:S.bat.y}, onEnd:'impact'});
-        a.z = e.z; a.armT0 = S.t; a.silentT = 0; S.st.potW += a.dmg; S.threatsTotal++;
+        const a = mkEnt(S, 'ARM', {wp:[{x:e.x, y:e.y}, {x:hm.x, y:hm.y}], alt:e.z, tgt:S.bn ? 'FU:' + hm.id : 'BTY', tgtPt:{x:hm.x, y:hm.y}, onEnd:'impact'});
+        a.z = e.z; a.armT0 = S.t; a.silentT = 0; a.home = hm; S.st.potW += a.dmg; S.threatsTotal++;
       }
     }
   }
-  if (e.kind === 'ARM' && e.alive){ if (!radarOn(S)) e.silentT += dt; if (e.silentT > 4) e.lost = true; }
+  if (e.kind === 'ARM' && e.alive){ if (!radarOnFu(e.home || S.bat)) e.silentT += dt; if (e.silentT > 4) e.lost = true; }
   if (e.kind === 'JAM'){
     e.jamT -= dt;
     if (e.jamT <= 0){ e.jamT = 16 + S.rng() * 14; spawnFalse(S, e); }
@@ -584,6 +595,7 @@ function stepEnt(S, e, dt){
       S.spawns.sort((a, b) => a.t - b.t);
     }
   }
+  if (e.leaveAt && S.t >= e.leaveAt && e.loop){ e.loop = false; e.wp = [{x:e.x, y:e.y}, polar(e.leaveBrg != null ? e.leaveBrg : brgOf(e.x, e.y), 280, {x:0, y:0})]; e.wi = 1; }
   if (e.attritAt && S.t >= e.attritAt && e.alive && Math.hypot(e.x, e.y) > 30){
     e.alive = false; e.attrited = true;
     if (e.trk && e.trk.est) say(S, 'TD', `${callsign(S)}, ${tdName(S)}. Splash track ${e.trk.num}, friendly air.`, {pri:1, silent:S.rng() < .6});
@@ -622,8 +634,18 @@ function impact(S, e, x, y){
     for (const p of S.plans) if (p.tier === 'UT' && p.state !== 'DONE') cancelPlan(S, p, 'TPY-2 LOST');
     return;
   }
-  if (b.alive && dB >= .5 && dB < 4 && e.tgt !== 'BTY'){ S.st.nearMiss++; S.out.push({k:'shake', d:dB}); ev(S, 'NEAR', `Impact ${dB.toFixed(1)} km from the battery`, {x:ix, y:iy}); }
-  if (b.alive && dB < (e.tgt === 'BTY' ? 1.6 : .5) && b.displace <= 0){
+  if (S.bn) for (const f of S.fus){
+    if (!f.alive) continue; const d = Math.hypot(ix - f.x, iy - f.y);
+    if (d < (e.tgt === 'FU:' + f.id ? 1.6 : .5)){
+      f.alive = false; S.st.fuLost++; S.st.hitsW += e.dmg * PRI_W[1]; S.st.leak++;
+      tone(S, 'klaxon'); ev(S, 'HIT', `${f.name} RADAR DESTROYED`, {bad:true, x:ix, y:iy});
+      say(S, 'NET', `${f.name}: impact on the radar. ${f.name} is blind.`, {pri:5, cls:'net'});
+      S.out.push({k:'banner', text:`${f.name} RADAR DESTROYED`, cls:'bad'}); S.out.push({k:'impact', x:ix, y:iy});
+      return;
+    }
+  }
+  if (b.alive && dB >= .5 && dB < 4 && e.tgt !== 'BTY' && e.tgt !== 'FU:' + b.id){ S.st.nearMiss++; S.out.push({k:'shake', d:dB}); ev(S, 'NEAR', `Impact ${dB.toFixed(1)} km from the battery`, {x:ix, y:iy}); }
+  if (!S.bn && b.alive && dB < (e.tgt === 'BTY' ? 1.6 : .5) && b.displace <= 0){
     b.alive = false; S.st.radarLost = true;
     S.st.hitsW += e.dmg * PRI_W[1]; S.st.leak++;
     tone(S, 'klaxon'); ev(S, 'HIT', 'RADAR DESTROYED', {bad:true});
@@ -650,15 +672,15 @@ function impact(S, e, x, y){
 
 // ---------- threat evaluation ----------
 function assess(S, e){
-  const tg = [...S.assets, {id:'BTY', name:'the battery', x:S.bat.x, y:S.bat.y, pri:1}];
+  const tg = S.bn ? [...S.assets, ...S.fus.filter(f => f.alive).map(f => ({id:'FU:' + f.id, name:f.name + ' radar', x:f.x, y:f.y, pri:1}))] : [...S.assets, {id:'BTY', name:'the battery', x:S.bat.x, y:S.bat.y, pri:1}];
   if (S.thaad && S.thaad.alive) tg.push({id:'TPY', name:'the TPY-2', x:S.thaad.x, y:S.thaad.y, pri:1});
   if (e.model === 'bal' || e.model === 'fall'){
     const tImp = Math.max(0, e.t0 + e.T0 - S.t); let dal = null, bd = 1e9;
     const rr = e.T.cluster ? e.T.cluster.r : 0;
-    for (const a of tg){ const d = Math.hypot(e.I.x - a.x, e.I.y - a.y); if (d < (a.id === 'BTY' || a.id === 'TPY' ? 3 : 4) + rr && d < bd){ bd = d; dal = a; } }
+    for (const a of tg){ const d = Math.hypot(e.I.x - a.x, e.I.y - a.y); if (d < (a.id === 'BTY' || a.id === 'TPY' || a.id.startsWith('FU:') ? 3 : 4) + rr && d < bd){ bd = d; dal = a; } }
     return {dal, tta:tImp, impact:e.I, closing:true};
   }
-  if (e.kind === 'ARM') return {dal:tg[tg.length - 1], tta:Math.hypot(e.x - S.bat.x, e.y - S.bat.y) / e.speed, impact:null, closing:true};
+  if (e.kind === 'ARM'){ const hm = e.home || S.bat, d = tg.find(a => a.id === (S.bn ? 'FU:' + hm.id : 'BTY')) || tg[tg.length - 1]; return {dal:d, tta:Math.hypot(e.x - hm.x, e.y - hm.y) / e.speed, impact:null, closing:true}; }
   const sp = Math.hypot(e.vx, e.vy); if (sp < .005) return {dal:null, tta:Infinity, impact:null, closing:false};
   const h = brgOf(e.vx, e.vy); let dal = null, best = Infinity, tta = Infinity;
   for (const a of tg){
@@ -686,11 +708,11 @@ function threatQueue(S){
 
 // ---------- engagement ----------
 function rec(e){ if (e.T.ballistic || e.kind === 'ARM') return ['MSE', 'GEMT']; return ['GEMT', 'MSE']; }
-function rounds(S, w, readyOnly = true){ return S.launchers.reduce((s, L) => s + ((!L.dead && (!readyOnly || L.state === 'READY')) ? (L[w] || 0) : 0), 0); }
-function pickLauncher(S, w){ let best = null; for (const L of S.launchers) if (!L.dead && L.state === 'READY' && L[w] > 0 && (!best || L[w] > best[w])) best = L; return best; }
+function rounds(S, w, readyOnly = true, fuId){ return S.launchers.reduce((s, L) => s + ((!L.dead && (!fuId || L.fu === fuId) && (!readyOnly || L.state === 'READY')) ? (L[w] || 0) : 0), 0); }
+function pickLauncher(S, w, fuId){ let best = null; for (const L of S.launchers) if (!L.dead && (!fuId || L.fu === fuId) && L.state === 'READY' && L[w] > 0 && (!best || L[w] > best[w])) best = L; return best; }
 function activePlan(S, e, tier){ return S.plans.find(p => p.uid === e.uid && p.state !== 'DONE' && (!tier || p.tier === tier)); }
-function solve(S, e, wk){
-  const W = WEAPONS[wk], ut = wk === 'THAAD', b = ut ? (S.thaad || S.bat) : S.bat;
+function solve(S, e, wk, fuId){
+  const W = WEAPONS[wk], ut = wk === 'THAAD', b = ut ? (S.thaad || S.bat) : (fuId && fuById(S, fuId)) || S.bat;
   if (e.released) return {ok:false, why:'SUBMUNITIONS RELEASED', tof:0, p:{x:e.x, y:e.y, z:e.z}, h:0};
   if (ut && !e.T.ballistic) return {ok:false, why:'BALLISTIC TARGETS ONLY', tof:0, p:{x:e.x, y:e.y, z:e.z}, h:0};
   const tmax = e.model === 'bal' || e.model === 'fall' ? Math.max(.6, e.t0 + e.T0 - S.t - .2) : 240;
@@ -714,7 +736,7 @@ function waitable(S, e, why){
   return false;
 }
 function docFor(S, e, ut){ if (ut) return S.doctrine.THAAD; if (e.T.ballistic) return S.doctrine.TBM; if (e.T.cls === 'UAV') return S.doctrine.UAV === 'CUAS' ? 'SINGLE' : S.doctrine.UAV; return S.doctrine.AIR; }
-function isSelfDef(S, e){ const a = assess(S, e); return a.dal && a.dal.id === 'BTY'; }
+function isSelfDef(S, e){ const a = assess(S, e); return a.dal && (a.dal.id === 'BTY' || a.dal.id.startsWith('FU:')); }
 function roeCheck(S, e){
   const v = [], k = e.trk, id = k ? k.id : 'PND';
   if (S.t < S.ceaseUntil) v.push('CEASE FIRE in effect');
@@ -737,18 +759,27 @@ function engage(S, e, o = {}){
     if (!thaadOn(S)) return {ok:false, why:S.thaad.alive ? 'TPY-2 SILENT' : 'TPY-2 DESTROYED'};
     if (!e.T.ballistic) return {ok:false, why:'THAAD ENGAGES BALLISTIC TARGETS ONLY'};
     if (!e.trk.tpy) return {ok:false, why:'NO TPY-2 TRACK'};
+  } else if (S.bn){
+    if (!o.fu || o.fu === 'BEST'){ const bs = bestShooter(S, e, o.wpn); if (!bs) return {ok:false, why:S.bn.arch === 'IBCS' ? 'NO FIRE UNIT HAS A SOLUTION' : 'NO BATTERY HOLDS IT WITH A SOLUTION'}; o = {...o, fu:bs.fu, wpn:o.wpn && o.wpn !== 'AUTO' ? o.wpn : bs.w}; }
+    const f = fuById(S, o.fu); if (!f) return {ok:false, why:'NO SUCH FIRE UNIT'};
+    if (f.epp > 0) return {ok:false, why:f.name + ' POWER FAULT'};
+    if (S.bn.arch === 'IBCS'){ if (!e.trk.by || !e.trk.by.length) return {ok:false, why:'NO SENSOR HOLDS THE TRACK'}; }
+    else { if (!radarOnFu(f)) return {ok:false, why:f.name + ' RADAR NOT RADIATING'}; if (!e.trk.by || !e.trk.by.includes(f.id)) return {ok:false, why:f.name + ' HOLDS NO TRACK · LEGACY FIRES ON OWN RADAR ONLY'}; }
+    if (S.plans.some(p => p.uid === e.uid && p.state !== 'DONE' && p.tier === 'LT' && p.fu === f.id)) return {ok:false, why:'ALREADY ENGAGED BY ' + f.name};
+    const oth = S.plans.find(p => p.uid === e.uid && p.state !== 'DONE' && p.tier === 'LT');
+    if (oth && src === 'player' && !o.force) return {ok:false, why:'ALREADY ENGAGED BY ' + (fuById(S, oth.fu) || {name:'BATTALION'}).name};
   } else {
     if (e.trk.remote) return {ok:false, why:'REMOTE TRACK · OWN RADAR MUST HOLD TRACK'};
     if (!radarOn(S)) return {ok:false, why:'RADAR NOT RADIATING'};
     if (S.bat.epp > 0) return {ok:false, why:'POWER FAULT'};
   }
-  if (activePlan(S, e, tier)) return {ok:false, why:'ALREADY ENGAGED'};
+  if (!S.bn || ut){ if (activePlan(S, e, tier)) return {ok:false, why:'ALREADY ENGAGED'}; }
   const v = roeCheck(S, e);
   if (src !== 'player' && v.length) return {ok:false, why:v[0]};
   if (src === 'player' && v.length && !o.force) return {ok:false, viol:v, why:v[0]};
-  const pref = o.wpn && o.wpn !== 'AUTO' ? [o.wpn] : rec(e);
+  const pref = o.wpn && o.wpn !== 'AUTO' ? [o.wpn] : rec(e), fid = S.bn && !ut ? o.fu : undefined;
   let w = null, sol = null;
-  for (const c of pref){ if (rounds(S, c) <= 0) continue; const s = solve(S, e, c); if (s.ok || waitable(S, e, s.why)){ w = c; sol = s; break; } if (!w){ w = c; sol = s; } }
+  for (const c of pref){ if (rounds(S, c, true, fid) <= 0) continue; const s = solve(S, e, c, fid); if (s.ok || waitable(S, e, s.why)){ w = c; sol = s; break; } if (!w){ w = c; sol = s; } }
   if (!w) return {ok:false, why:'NO MISSILES READY'};
   if (!sol.ok && !waitable(S, e, sol.why)) return {ok:false, why:sol.why};
   if (v.length){
@@ -756,12 +787,17 @@ function engage(S, e, o = {}){
     say(S, 'TD', `${callsign(S)}, ${tdName(S)}. You are not cleared to engage track ${e.trk.num}.`, {pri:4, speak:`${callsign(S)}, ${tdName(S)}. You are not cleared to engage track ${spoken(e.trk.num)}`});
   }
   const doc = docFor(S, e, ut);
-  const p = {id:S.pid++, uid:e.uid, trk:e.trk.num, w, tier, wpref:o.wpn || 'AUTO', doc, src, state:src === 'auto' ? 'VETO' : (sol.ok ? 'READY' : 'WAIT'), vetoT:src === 'auto' ? 5 : 0, fireAt:S.t + reactDelay(S, src), shots:0, max:doc === 'RIPPLE' ? 2 : 1, inflight:0, salvo:1, created:S.t, result:''};
+  const bnVeto = S.bn && !ut && src !== 'player' && !e.T.ballistic && e.trk.idBy === 'AUTO'; // battalion: crews give the FDC a veto window on air tracks the computer declared
+  const p = {id:S.pid++, uid:e.uid, trk:e.trk.num, w, tier, wpref:o.wpn || 'AUTO', doc, src, fu:fid, state:src === 'auto' || bnVeto ? 'VETO' : (sol.ok ? 'READY' : 'WAIT'), vetoT:src === 'auto' ? 5 : bnVeto ? 6 : 0, fireAt:S.t + reactDelay(S, src), shots:0, max:doc === 'RIPPLE' ? 2 : 1, inflight:0, salvo:1, created:S.t, result:''};
+  if (S.bn && !ut){ const oth = S.plans.find(q => q.uid === e.uid && q.state !== 'DONE' && q.tier === 'LT'); if (oth){ p.dup = true; S.st.dup++; ev(S, 'DUP', `Duplicate engagement: ${fuById(S, fid).name} and ${(fuById(S, oth.fu) || {name:'?'}).name} both on track ${e.trk.num}`, {bad:true, trk:e.trk.num}); } }
   S.plans.push(p);
   if (e.engageOrder) e.engageDone = true;
-  ev(S, 'ENG', `${src === 'player' ? 'Engage' : src === 'semi' ? 'Semi-auto engage' : src === 'ai' ? (ut ? 'THAAD crew engages' : 'Patriot crew engages') : 'Auto engage'} track ${e.trk.num} · ${WEAPONS[w].name} · ${doc}`, {trk:e.trk.num, uid:e.uid, src, kind:e.kind, tier});
-  if (src === 'ai'){ S.log.push({t:S.t, who:'NET', text:`${ut ? 'THAAD' : 'PATRIOT'} ENGAGING TRK ${e.trk.num} · ${WEAPONS[w].name} · ${doc}`, cls:'net'}); }
-  else if (src === 'auto'){ tone(S, 'veto'); say(S, 'TCA', `Auto engage track ${e.trk.num}. Veto window five seconds.`, {speak:`Auto engage track ${spoken(e.trk.num)}`, pri:2}); }
+  const fnm = fid ? fuById(S, fid).name : null;
+  ev(S, 'ENG', `${src === 'player' ? 'Engage' : src === 'semi' ? 'Semi-auto engage' : src === 'ai' ? (ut ? 'THAAD crew engages' : fnm ? fnm + ' engages' : 'Patriot crew engages') : 'Auto engage'} track ${e.trk.num}${fnm && src !== 'ai' ? ' · ' + fnm : ''} · ${WEAPONS[w].name} · ${doc}`, {trk:e.trk.num, uid:e.uid, src, kind:e.kind, tier, fu:fid});
+  if (bnVeto){ tone(S, 'veto'); S.log.push({t:S.t, who:'NET', text:`${fnm} ENGAGING TRK ${e.trk.num} · ${WEAPONS[w].name} · VETO 6 S`, cls:'net'}); say(S, 'NET', `${fnm} engaging track ${e.trk.num}. Veto window six seconds.`, {speak:`${fnm} engaging ${spoken(e.trk.num)}`, pri:2, silent:true}); }
+  else if (src === 'ai'){ S.log.push({t:S.t, who:'NET', text:`${ut ? 'THAAD' : fnm || 'PATRIOT'} ENGAGING TRK ${e.trk.num} · ${WEAPONS[w].name} · ${doc}`, cls:'net'}); }
+  else if (src === 'auto'){ tone(S, 'veto'); say(S, S.bn ? 'NET' : 'TCA', `Auto engage track ${e.trk.num}${fnm ? ', ' + fnm : ''}. Veto window five seconds.`, {speak:`Auto engage track ${spoken(e.trk.num)}`, pri:2, cls:S.bn ? 'net' : ''}); }
+  else if (S.bn) S.log.push({t:S.t, who:'FDC', text:`${fnm} ENGAGE TRK ${e.trk.num} · ${WEAPONS[w].name} · ${doc}${src === 'semi' ? ' · IBCS' : ''}`, cls:'me'});
   else say(S, 'TCA', `Engaging track ${e.trk.num}, ${WEAPONS[w].name}.`, {speak:`Engaging track ${spoken(e.trk.num)}`, pri:1, silent:src === 'semi' && S.rng() < .5});
   return {ok:true, plan:p};
 }
@@ -775,7 +811,8 @@ function launch(S, p, e, L, sol){
     say(S, p.tier === 'UT' ? 'NET' : 'TCA', `Misfire, launcher ${L.id}. Next round.`, {pri:2, cls:p.tier === 'UT' ? 'net' : ''});
     return false;
   }
-  const m = {id:S.mid++, plan:p.id, uid:e.uid, w:p.w, tier:p.tier, x:L.x, y:L.y, z:0, sx:L.x, sy:L.y, t0:S.t, tEnd:S.t + sol.tof, aim:{x:sol.p.x, y:sol.p.y, z:sol.p.z}, owner:'own', alive:true, lastAim:S.t, guidLost:0, fail:!S.tut && S.rng() < REL.flight};
+  const m = {id:S.mid++, plan:p.id, uid:e.uid, w:p.w, tier:p.tier, fu:p.fu, x:L.x, y:L.y, z:0, sx:L.x, sy:L.y, t0:S.t, tEnd:S.t + sol.tof, aim:{x:sol.p.x, y:sol.p.y, z:sol.p.z}, owner:'own', alive:true, lastAim:S.t, guidLost:0, fail:!S.tut && S.rng() < REL.flight};
+  if (p.dup) S.st.dupShots++;
   S.ms.push(m); p.inflight++;
   const a = assess(S, e);
   if (e.truth === 'X'){ S.st.wasted++; S.st.waste.fals++; }
@@ -785,8 +822,8 @@ function launch(S, p, e, L, sol){
   if (p.w === 'MSE' && e.T.cls === 'UAV') S.st.mseDrone++;
   tone(S, 'launch');
   ev(S, 'LAUNCH', `${WEAPONS[p.w].name} away, launcher ${L.id} → track ${p.trk}`, {trk:p.trk, uid:e.uid});
-  if (p.shots === 0 && p.tier !== 'UT') say(S, 'TCA', `Missile away, launcher ${L.id}.`, {pri:1, silent:S.rng() < .35});
-  if (lsTotal(L) === 0 && p.tier !== 'UT') say(S, 'TCA', `Launcher ${L.id} empty.`, {pri:2});
+  if (p.shots === 0 && p.tier !== 'UT' && !S.bn) say(S, 'TCA', `Missile away, launcher ${L.id}.`, {pri:1, silent:S.rng() < .35});
+  if (lsTotal(L) === 0 && p.tier !== 'UT' && !S.bn) say(S, 'TCA', `Launcher ${L.id} empty.`, {pri:2});
   S.out.push({k:'launch', x:L.x, y:L.y, ut:p.tier === 'UT'});
   return true;
 }
@@ -802,21 +839,22 @@ function processPlans(S, dt){
     if (e.released && p.state !== 'DONE' && p.inflight === 0){ p.state = 'DONE'; p.result = 'SUBMUNITIONS'; continue; }
     if (p.state === 'WAIT'){
       if (!e.trk || !e.trk.est){ continue; }
-      const sol = solve(S, e, p.w);
+      const sol = solve(S, e, p.w, p.fu);
       if (sol.ok){ p.state = 'READY'; if (p.fireAt < S.t) p.fireAt = S.t + .5; }
-      else if (!waitable(S, e, sol.why)){ p.state = 'DONE'; p.result = sol.why; say(S, 'TCA', `No intercept on track ${p.trk}. ${sol.why.toLowerCase()}.`, {pri:2}); ev(S, 'NOSOL', `No intercept solution, track ${p.trk}: ${sol.why}`, {trk:p.trk}); }
+      else if (!waitable(S, e, sol.why)){ p.state = 'DONE'; p.result = sol.why; say(S, S.bn ? 'NET' : 'TCA', `No intercept on track ${p.trk}. ${sol.why.toLowerCase()}.`, {pri:2, cls:S.bn ? 'net' : '', silent:!!S.bn}); ev(S, 'NOSOL', `No intercept solution, track ${p.trk}: ${sol.why}`, {trk:p.trk}); }
       continue;
     }
     if (p.state === 'READY' && S.t >= p.fireAt){
-      if (S.ms.reduce((n, m) => n + (m.alive && m.owner === 'own' && m.tier === p.tier ? 1 : 0), 0) >= CHAN[p.tier]){ p.chanWait = (p.chanWait || 0) + dt; continue; } // fire-control channels full
+      if (S.ms.reduce((n, m) => n + (m.alive && m.owner === 'own' && m.tier === p.tier && (!S.bn || m.fu === p.fu) ? 1 : 0), 0) >= CHAN[p.tier]){ p.chanWait = (p.chanWait || 0) + dt; continue; } // fire-control channels full
       if (p.tier === 'UT'){ if (!thaadOn(S) || !e.trk || !e.trk.tpy) continue; }
-      else { if (!radarOn(S) || S.bat.epp > 0) continue; if (!e.trk || e.trk.remote) continue; }
+      else if (!canFireLT(S, p, e)) continue;
       if (S.t < S.ceaseUntil && p.src !== 'player') continue;
-      let sol = solve(S, e, p.w);
+      let sol = solve(S, e, p.w, p.fu);
       if (!sol.ok){ p.state = waitable(S, e, sol.why) ? 'WAIT' : 'DONE'; if (p.state === 'DONE') p.result = sol.why; continue; }
-      let L = pickLauncher(S, p.w);
-      if (!L && p.wpref === 'AUTO' && p.tier !== 'UT'){ const alt = p.w === 'MSE' ? 'GEMT' : 'MSE'; const s2 = solve(S, e, alt); if (s2.ok && pickLauncher(S, alt)){ p.w = alt; sol = s2; L = pickLauncher(S, alt); } }
-      if (!L){ p.state = 'DONE'; p.result = 'NO MISSILES'; say(S, 'TCA', `No ready missiles for track ${p.trk}.`, {pri:3}); ev(S, 'NOMSL', `No ready missiles for track ${p.trk}`, {bad:true}); continue; }
+      const lf = S.bn && p.tier === 'LT' ? p.fu : undefined;
+      let L = pickLauncher(S, p.w, lf);
+      if (!L && p.wpref === 'AUTO' && p.tier !== 'UT'){ const alt = p.w === 'MSE' ? 'GEMT' : 'MSE'; const s2 = solve(S, e, alt, p.fu); if (s2.ok && pickLauncher(S, alt, lf)){ p.w = alt; sol = s2; L = pickLauncher(S, alt, lf); } }
+      if (!L){ p.state = 'DONE'; p.result = 'NO MISSILES'; const fn = lf ? fuById(S, lf).name + ': ' : ''; say(S, S.bn ? 'NET' : 'TCA', `${fn}No ready missiles for track ${p.trk}.`, {pri:3, cls:S.bn ? 'net' : ''}); ev(S, 'NOMSL', `${fn}No ready missiles for track ${p.trk}`, {bad:true}); continue; }
       if (S.t < S.ceaseUntil && p.src === 'player' && !p.cfViol){ p.cfViol = true; }
       if (!launch(S, p, e, L, sol)){ p.fireAt = S.t + 1; continue; }
       p.shots++;
@@ -827,9 +865,9 @@ function processPlans(S, dt){
       if (!e.alive){ p.state = 'DONE'; continue; }
       if ((p.doc === 'SLS' || p.src !== 'player') && p.salvo < (p.tier === 'UT' ? 2 : 3)){
         p.salvo++; p.shots = 0; p.max = p.doc === 'RIPPLE' ? 2 : 1;
-        const sol = solve(S, e, p.w);
+        const sol = solve(S, e, p.w, p.fu);
         p.state = sol.ok ? 'READY' : (waitable(S, e, sol.why) ? 'WAIT' : 'DONE'); p.fireAt = S.t + 1.2;
-        if (p.state !== 'DONE') say(S, 'TCA', `Re-engaging track ${p.trk}.`, {pri:1, speak:`Re engage ${spoken(p.trk)}`});
+        if (p.state !== 'DONE' && !S.bn) say(S, 'TCA', `Re-engaging track ${p.trk}.`, {pri:1, speak:`Re engage ${spoken(p.trk)}`});
         else p.result = 'MISS';
       } else { p.state = 'DONE'; p.result = 'MISS'; }
     }
@@ -848,7 +886,7 @@ function stepMissiles(S, dt){
     if (!m.alive) continue;
     const e = S.ents.find(x => x.uid === m.uid);
     if (!e || !e.alive){ m.alive = false; m.res = 'NO TARGET'; if (m.owner === 'own') planDec(S, m); continue; }
-    const on = m.tier === 'UT' ? onT : onP;
+    const on = m.tier === 'UT' ? onT : S.bn ? guideOk(S, m, e) : onP;
     if (m.owner === 'own' && !on) m.guidLost += dt;
     if (S.t - m.lastAim > 1 && (m.owner !== 'own' || on)){ const rem = m.tEnd - S.t; if (rem > .4){ const pr = predict(S, e, rem); m.aim = {x:pr.x, y:pr.y, z:pr.z}; m.lastAim = S.t; } }
     const f = clamp((S.t - m.t0) / (m.tEnd - m.t0), 0, 1);
@@ -890,7 +928,7 @@ function resolveMissile(S, m, e){
     m.res = 'MISS'; S.st.miss++;
     const n = e.trk ? e.trk.num : '';
     tone(S, 'miss'); ev(S, 'MISS', `Miss on track ${n}`, {trk:n});
-    say(S, 'TCA', `Miss, track ${n}.`, {speak:`Miss, track ${spoken(n)}`, pri:2});
+    say(S, S.bn ? 'NET' : 'TCA', `Miss, track ${n}.`, {speak:`Miss, track ${spoken(n)}`, pri:2, cls:S.bn ? 'net' : ''});
     S.out.push({k:'miss', x:m.x, y:m.y, z:m.z});
   }
 }
@@ -915,7 +953,9 @@ function kill(S, e, m){
   if (e.truth === 'H') S.st.killVal += e.T.value;
   tone(S, 'kill');
   ev(S, 'KILL', `Kill, track ${n} (${e.T.cls}${e.T.decoy ? ', decoy' : ''}${e.kind === 'FALSE' ? ', false target' : ''})`, {good:true, trk:n});
-  say(S, 'TCA', `Kill assessment, track ${n}, probable kill.`, {speak:`Track ${spoken(n)}, probable kill`, pri:2});
+  if (S.bn) say(S, 'NET', `${m.fu ? fuById(S, m.fu).name + ': ' : ''}splash track ${n}.`, {speak:`Splash ${spoken(n)}`, pri:2, cls:'net', silent:!e.T.ballistic});
+  else say(S, 'TCA', `Kill assessment, track ${n}, probable kill.`, {speak:`Track ${spoken(n)}, probable kill`, pri:2});
+  if (S.scn.civHarm && e.T.ballistic && e.z >= 2 && e.z < 18) civDebris(S, e);
   if (e.T.ballistic && e.z < 6){
     for (const a of S.assets) if (Math.hypot(e.x - a.x, e.y - a.y) < 3){ a.hp = Math.max(0, a.hp - .5); S.st.debris++; S.st.hitsW += .5 * PRI_W[a.pri]; ev(S, 'DEBRIS', `Intercept debris fell on ${a.name}`, {bad:true}); break; }
   }
@@ -1107,7 +1147,7 @@ function stepCrew(S){
   }
 }
 function setSector(S, v){
-  if (S.bat.sector === v) return;
+  if (S.bat.sector === v || S.bat.ltamds) return;
   S.bat.sector = v; S.bat.half = v === 'NARROW' ? 30 : 60;
   ev(S, 'SECTOR', `Search sector ${v} (±${S.bat.half}°)`);
   S.log.push({t:S.t, who:'SYS', text:`SEARCH SECTOR ${v} · ±${S.bat.half}°${v === 'NARROW' ? ' · RANGE +25%' : ''}`, cls:'sys'});
@@ -1280,7 +1320,7 @@ function setSeat(S, v){
 // ---------- command log, rewind ----------
 const ent = (S, uid) => S.ents.find(e => e.uid === uid);
 const CMD = {
-  engage:(S, a) => engage(S, ent(S, a.uid), {src:'player', wpn:a.wpn, force:a.force}),
+  engage:(S, a) => engage(S, ent(S, a.uid), {src:'player', wpn:a.wpn, force:a.force, fu:a.fu}),
   id:(S, a) => playerId(S, ent(S, a.uid), a.id),
   iff:(S, a) => playerIff(S, ent(S, a.uid)),
   hold:(S, a) => holdFire(S, ent(S, a.uid)),
@@ -1299,7 +1339,11 @@ const CMD = {
   seat:(S, a) => setSeat(S, a.v),
   layer:(S, a) => { S.doctrine.LAYER = a.v; },
   tpyEmcon:(S, a) => { if (S.thaad){ S.thaad.emcon = !!a.v; ev(S, 'EMCON', a.v ? 'TPY-2 silent' : 'TPY-2 radiating'); } },
-  end:S => { S.endAt = S.t; S.endReason = 'Ended by the TCO'; S.abandon = true; },
+  end:S => { S.endAt = S.t; S.endReason = S.bn ? 'Ended by the FDC' : 'Ended by the TCO'; S.abandon = true; },
+  corr:(S, a) => correlate(S, ent(S, a.uid)),
+  fuCtrl:(S, a) => fuCtrl(S, a.fu, a.v),
+  fuEmcon:(S, a) => fuEmcon(S, a.fu, a.v),
+  fuPtl:(S, a) => fuPtl(S, a.fu, a.ptl),
 };
 function cmd(S, c, a = {}){ if (S.ended) return; S.inputs.push({n:S.n, c, a}); return CMD[c](S, a); }
 function rewind(scn, opts, inputs, nStop){
@@ -1325,7 +1369,7 @@ function ghostThink(S){
     if (k.iff === 'M4 VALID') id = 'FRD';
     else if (k.iff && k.iff.startsWith('M3')) id = 'NEU';
     else if (k.iff === 'NO RESP'){
-      if (inCorridor(S, e) && sp > .18){ if (!k.ghostIff){ k.ghostIff = 1; cmd(S, 'iff', {uid:e.uid}); continue; } id = 'FRD'; }
+      if ((inCorridor(S, e) && sp > .18) || (S.bn && inZone(S, e, 'CAP') && sp > .22)){ if (!k.ghostIff){ k.ghostIff = 1; cmd(S, 'iff', {uid:e.uid}); continue; } id = 'FRD'; }
       else if (!k.cls) id = null;
       else if (e.T.cls === 'UAV' && zs.length >= 10){ const m = zs.reduce((a, c) => a + c, 0) / zs.length, sd = Math.sqrt(zs.reduce((a, c) => a + (c - m) ** 2, 0) / zs.length); id = sd < .005 ? 'SUS' : 'HOS'; }
       else if (e.T.cls !== 'UAV' && assess(S, e).closing) id = 'HOS';
@@ -1334,6 +1378,12 @@ function ghostThink(S){
     if (id && k.id !== id) cmd(S, 'id', {uid:e.uid, id});
   }
   if (armClose !== S.bat.emcon) cmd(S, 'emcon', {v:armClose});
+  if (S.bn){ // a by-the-book FDC re-interrogates every air track a battery wants to shoot, and correlates duals
+    for (const p of S.plans){ if (p.state !== 'VETO') continue; const e = ent(S, p.uid); if (!e || !e.trk) continue;
+      if (!p.ghostIff){ p.ghostIff = true; cmd(S, 'iff', {uid:e.uid}); }
+      if (e.trk.iff === 'M4 VALID' || inCorridor(S, e) || inZone(S, e, 'CAP')) cmd(S, 'veto', {pid:p.id}); }
+    for (const e of S.ents) if (e.alive && e.trk && e.trk.dual) cmd(S, 'corr', {uid:e.uid});
+  }
 }
 function runGhost(scn, opts){
   const S = createSim(scn, {...opts, mode:'SEMI', seat:'PAT', tca:{...(opts.tca || {}), fatigue:0, delegate:{reload:true, faults:true}}});
@@ -1341,6 +1391,223 @@ function runGhost(scn, opts){
   while (!S.ended && n < 60000){ step(S); n++; if (n % 10 === 0) ghostThink(S); S.out.length = 0; }
   const engaged = {}; for (const x of S.ev) if (x.k === 'ENG' && x.uid) engaged[x.uid] = x.t;
   return {score:S.score, st:S.st, engaged, ev:S.ev.filter(x => ['ENG','KILL','HIT','VIOL','FRAT','EMCON'].includes(x.k)), t:S.t, kinds:Object.fromEntries(S.ents.map(e => [e.uid, e.kind]))};
+}
+
+// =====================================================================
+// 4.0 · battalion fire direction: several fire units, legacy or IBCS
+// =====================================================================
+const LINK_DELAY = 4; // seconds before a legacy battery sees another battery's engagement over the data link
+function setupBn(S, o, take){
+  const bn = S.scn.bn, arch = o.arch === 'IBCS' || o.arch === 'LEGACY' ? o.arch : bn.arch || 'LEGACY';
+  S.bn = {arch, swapSeen:{}, dualSeq:0};
+  S.seat = 'BN';
+  const sensor = (f, u) => { f.ltamds = arch === 'IBCS' && !!u.ltamds; f.half = f.ltamds ? 180 : 60; f.rf = f.ltamds ? 1.15 : 1; f.radar = f.ltamds ? 'LTAMDS' : 'MPQ-65'; };
+  const u0 = bn.units[0], b = S.bat;
+  Object.assign(b, {id:u0.id, name:u0.name, ctrl:'AUTO', fuUnit:true});
+  if (o.ptls && o.ptls[0] != null) b.ptl = o.ptls[0];
+  sensor(b, u0); b.sector = b.ltamds ? '360' : 'WIDE';
+  let k = 0; for (const L of S.launchers) if (L.type !== 'THAAD'){ L.fu = b.id; L.id = b.id + (++k); }
+  bn.units.slice(1).forEach((u, j) => {
+    const f = {id:u.id, name:u.name, x:u.x, y:u.y, ptl:o.ptls && o.ptls[j + 1] != null ? o.ptls[j + 1] : u.ptl, alive:true, emcon:false, reorient:0, newPtl:null, displace:0, epp:0, radarFault:0, ctrl:'AUTO', fuUnit:true};
+    sensor(f, u); S.fus.push(f);
+    (u.launchers || []).forEach((L, i) => {
+      const type = L[0], cap = type === 'MSE' ? {MSE:12, GEMT:0, THAAD:0} : type === 'GEMT' ? {MSE:0, GEMT:4, THAAD:0} : {MSE:6, GEMT:2, THAAD:0};
+      const mse = take('MSE', L[1]), gemt = take('GEMT', L[2]);
+      S.launchers.push({id:u.id + (i + 1), fu:u.id, type, cap, MSE:mse, GEMT:gemt, THAAD:0, state:'READY', timer:0, x:0, y:0, dead:false, pend:null});
+      S.loaded.MSE += mse; S.loaded.GEMT += gemt;
+    });
+  });
+}
+function updateTracksBn(S, dt){
+  const tOn = thaadOn(S), on = S.fus.map(radarOnFu), ibcs = S.bn.arch === 'IBCS';
+  for (const e of S.ents){
+    if (!e.alive) continue;
+    const by = [];
+    for (let i = 0; i < S.fus.length; i++){ const f = S.fus[i]; if (on[i] && detects(S, f, e, f === S.bat)) by.push(f.id); }
+    const tpy = tOn && tpyDetects(S, e);
+    let det = by.length > 0, remDet = false, remName = null;
+    if (!det && S.comms) for (const nb of S.neighbors) if (nb.on && detects(S, nb, e, false)){ remDet = true; remName = nb.name; break; }
+    if (!det && !remDet && tpy){ remDet = true; remName = 'TPY-2'; }
+    if (e.kind === 'FALSE' && !det) remDet = false;
+    if (det || remDet){
+      if (!e.trk) e.trk = {num:0, q:0, est:false, cls:false, id:'PND', idBy:'', last:S.t, remote:!det, iff:null, hold:false, firstT:S.t, remName, zs:[], by:[]};
+      const k = e.trk; k.last = S.t; k.remote = !det; k.remName = remName; k.tpy = tpy; k.by = by;
+      const rate = (e.T.ballistic ? .7 : .35) * (ibcs ? 1 + .35 * Math.max(0, by.length - 1) : 1);
+      k.q = Math.min(e.kind === 'FALSE' ? .45 : 1, k.q + dt * rate * (det || tpy ? 1 : .6));
+      if (!k.est && k.q >= .3) establish(S, e);
+      if (k.est && !k.cls && k.q >= .6) classify(S, e);
+      if (!ibcs && k.est && by.length >= 2 && !k.dualChk && e.kind !== 'FALSE'){ // two batteries report the same target with different track numbers
+        k.dualChk = true;
+        if (S.rng() < (e.T.ballistic ? .35 : .25)){ const o = polar(S.rng() * 360, 1.2 + S.rng() * 2.2); k.dual = {num:S.trkNext++, dx:o.x, dy:o.y, t:S.t, by:by[by.length - 1]}; S.st.duals++; ev(S, 'DUAL', `Dual designation: track ${k.num} also reported as ${k.dual.num}`, {trk:k.num, quiet:true}); }
+      }
+      if (k.dual && !by.length) k.dual = null;
+    } else if (e.trk){
+      if (S.t - e.trk.last > 8) dropTrack(S, e); else { e.trk.q = Math.max(.05, e.trk.q - dt * .05); e.trk.by = []; }
+    }
+  }
+}
+function canFireLT(S, p, e){
+  if (!S.bn) return radarOn(S) && S.bat.epp <= 0 && !!e.trk && !e.trk.remote;
+  const f = fuById(S, p.fu); if (!f || !e.trk || f.epp > 0) return false;
+  if (S.bn.arch === 'IBCS') return !!(e.trk.by && e.trk.by.length);
+  return radarOnFu(f) && !!e.trk.by && e.trk.by.includes(f.id);
+}
+function guideOk(S, m, e){
+  if (m.owner !== 'own') return true;
+  const f = fuById(S, m.fu); if (!f || !e.trk) return false;
+  if (S.bn.arch === 'IBCS') return !!(e.trk.by && e.trk.by.length);
+  return radarOnFu(f) && !!e.trk.by && e.trk.by.includes(f.id);
+}
+function roundsFu(S, w, fuId){ return rounds(S, w, true, fuId); }
+function bestShooter(S, e, wpref){ // the fire unit with the earliest good shot, sparing units that are low or busy
+  if (!e.trk) return null;
+  const ibcs = S.bn.arch === 'IBCS', a = assess(S, e), ref = a.impact || e; let best = null;
+  for (const f of S.fus){
+    if (f.epp > 0) continue;
+    if (ibcs ? !(e.trk.by && e.trk.by.length) : !(radarOnFu(f) && e.trk.by && e.trk.by.includes(f.id))) continue;
+    const ws = wpref && wpref !== 'AUTO' ? [wpref] : rec(e), busy = S.ms.filter(m => m.alive && m.owner === 'own' && m.tier === 'LT' && m.fu === f.id).length;
+    ws.forEach((w, wi) => {
+      const n = roundsFu(S, w, f.id); if (n <= 0) return;
+      const sol = solve(S, e, w, f.id); if (!sol.ok && !waitable(S, e, sol.why)) return;
+      const sc = (sol.ok ? sol.tof : 400 + Math.hypot(ref.x - f.x, ref.y - f.y)) - Math.min(n, 12) * .4 + busy * 3 + wi * 25;
+      if (!best || sc < best.sc) best = {fu:f.id, w, sol, sc};
+    });
+  }
+  return best;
+}
+function cuasCovers(S, d){ return !!d && S.cuas.some(c => !c.dead && (c.type === 'GUN' || c.left > 0) && Math.hypot(d.x - c.x, d.y - c.y) < (c.r || 3.5) + 2); }
+function inZone(S, e, k){ return (S.scn.acm || []).some(z => z.k === k && (z.r ? Math.hypot(e.x - z.x, e.y - z.y) <= z.r : pip(z.poly, e.x, e.y))); }
+function aiIdBn(S){ // battery crews (legacy) or IBCS track management declare silent, closing air tracks outside the corridors
+  const ibcs = S.bn.arch === 'IBCS';
+  for (const e of S.ents){
+    if (!e.alive || !e.trk || !e.trk.est || e.T.ballistic || e.kind === 'FALSE') continue;
+    const k = e.trk; if (k.idBy === 'PLAYER' || !k.cls || (k.id !== 'UNK' && k.id !== 'PND') || k.iff !== 'NO RESP') continue;
+    if (!ibcs && !(k.by || []).some(id => (fuById(S, id) || {}).ctrl !== 'HOLD')) continue;
+    if (inCorridor(S, e) || inZone(S, e, 'CAP')) continue; // procedural control: friendlies are expected in lanes and CAP boxes
+    const zs = k.zs || [], m = zs.length ? zs.reduce((a, c) => a + c, 0) / zs.length : 0, sd = zs.length > 9 ? Math.sqrt(zs.reduce((a, c) => a + (c - m) ** 2, 0) / zs.length) : 1;
+    const wfz = inZone(S, e, 'WFZ');
+    if (e.T.cls === 'UAV' ? zs.length > 9 && (sd >= .005 || wfz) : (assess(S, e).closing || wfz)) setId(S, e, 'HOS', 'AUTO');
+  }
+}
+function ibcsEngage(S){
+  for (const x of threatQueue(S)){
+    const e = x.e, k = e.trk;
+    if (k.id !== 'HOS' || k.hold || e.released || !x.a.dal) continue;
+    if (S.plans.some(p => p.uid === e.uid && p.state !== 'DONE' && p.tier === 'LT')) continue;
+    if (layerWait(S, e)) continue;
+    if (e.T.cls === 'UAV' && S.doctrine.UAV === 'CUAS' && cuasCovers(S, x.a.dal)) continue;
+    if (roeCheck(S, e).length) continue;
+    const b = bestShooter(S, e); if (!b) continue;
+    const ctl = fuById(S, b.fu); if (ctl.ctrl === 'HOLD') continue;
+    engage(S, e, {src:S.mode === 'AUTO' ? 'auto' : 'semi', fu:b.fu, wpn:b.w});
+  }
+}
+function aiBn(S){
+  if (S.thaad) aiThaad(S);
+  if (S.mode === 'MANUAL') return;
+  aiIdBn(S);
+  if (S.bn.arch === 'IBCS') return ibcsEngage(S);
+  const area = S.scn.bn.area || 30;
+  for (const f of S.fus){
+    if (f.ctrl === 'HOLD' || !radarOnFu(f) || f.epp > 0) continue;
+    for (const e of S.ents){
+      if (!e.alive || !e.trk || !e.trk.est || !e.trk.by || !e.trk.by.includes(f.id)) continue;
+      const k = e.trk; if (k.hold || k.id !== 'HOS' || e.released) continue;
+      if (layerWait(S, e)) continue;
+      const a = assess(S, e); if (!a.dal || Math.hypot(a.dal.x - f.x, a.dal.y - f.y) > area) continue; // each battery defends its own area
+      if (e.T.cls === 'UAV' && S.doctrine.UAV === 'CUAS' && cuasCovers(S, a.dal)) continue;
+      if (roeCheck(S, e).length) continue;
+      if (S.plans.some(p => p.uid === e.uid && p.state !== 'DONE' && p.tier === 'LT' && p.fu === f.id)) continue;
+      const oth = S.plans.find(p => p.uid === e.uid && p.state !== 'DONE' && p.tier === 'LT');
+      if (oth){ if (k.dual && k.dual.by === f.id){} else if (S.t - oth.created > LINK_DELAY || S.rng() < .5) continue; } // the engagement reached this battery over the link, or the crew heard it on the net
+      if (rounds(S, rec(e)[0], true, f.id) + rounds(S, rec(e)[1], true, f.id) <= 0) continue;
+      engage(S, e, {src:'ai', fu:f.id});
+    }
+  }
+}
+function stepBn(S){
+  const ibcs = S.bn.arch === 'IBCS';
+  if (ibcs){ // Link 16 PPLI: friendly aircraft report their own position, so the composite picture can name them even with a dead Mode 4
+    for (const e of S.ents){
+      if (!e.alive || e.truth !== 'F' || !e.trk || !e.trk.est || e.trk.ppli || S.t - e.trk.firstT < 6) continue;
+      const k = e.trk; k.ppli = true;
+      if (k.id !== 'FRD' && k.idBy !== 'PLAYER' && ((e.uid * 2654435761) >>> 0) / 4294967296 < .8){ setId(S, e, 'FRD', 'AUTO'); S.st.ppli++; S.log.push({t:S.t, who:'SYS', text:`IBCS · TRK ${k.num} CORRELATED WITH LINK 16 PPLI · FRIEND`, cls:'sys'}); }
+    }
+    return;
+  }
+  // legacy: two tracks that cross can swap numbers and identities
+  const L = S.ents.filter(e => e.alive && e.trk && e.trk.est && !e.T.ballistic && e.kind !== 'FALSE');
+  for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++){
+    const a = L[i], b = L[j]; if (Math.hypot(a.x - b.x, a.y - b.y) > 1.8 || Math.abs(a.z - b.z) > 2.5) continue;
+    const key = Math.min(a.uid, b.uid) + '-' + Math.max(a.uid, b.uid); if (S.bn.swapSeen[key]) continue; S.bn.swapSeen[key] = true;
+    if (S.rng() >= .45) continue;
+    const ka = a.trk, kb = b.trk; a.trk = kb; b.trk = ka; S.st.swaps++;
+    const differ = ka.id !== kb.id;
+    ev(S, 'SWAP', `Track numbers swapped where ${ka.num} and ${kb.num} crossed${differ ? ': identities now sit on the wrong aircraft' : ''}`, {bad:differ, trk:ka.num});
+    if (differ && S.rng() < tcaEff(S)) say(S, 'TCA', `Tracks ${ka.num} and ${kb.num} merged and split. Check both identities.`, {pri:3, speak:`Tracks ${spoken(ka.num)} and ${spoken(kb.num)} crossed. Check identity`});
+  }
+}
+function stepFus(S, dt){
+  for (const f of S.fus){ if (f === S.bat || !(f.reorient > 0)) continue; f.reorient -= dt; if (f.reorient <= 0){ f.ptl = f.newPtl; placeLaunchers(S); S.log.push({t:S.t, who:'NET', text:`${f.name} PTL ${String(Math.round(f.ptl)).padStart(3, '0')} · RADIATING`, cls:'net'}); } }
+}
+function correlate(S, e){
+  if (!e || !e.trk || !e.trk.dual) return false;
+  const n = e.trk.dual.num; e.trk.dual = null; S.st.corr++;
+  ev(S, 'CORR', `Correlated: ${n} dropped, ${e.trk.num} kept`, {good:true, trk:e.trk.num});
+  S.log.push({t:S.t, who:'FDC', text:`CORRELATE TRK ${e.trk.num} / ${n} · ${n} DROPPED`, cls:'me'});
+  return true;
+}
+function fuCtrl(S, id, v){ const f = fuById(S, id); if (!f) return; f.ctrl = v; ev(S, 'CTRL', `${f.name} ${v === 'HOLD' ? 'held: fires only on battalion orders' : 'released to fight its own area'}`); S.log.push({t:S.t, who:'FDC', text:`${f.name} ${v === 'HOLD' ? 'WEAPONS HOLD · FIRE ON BATTALION ORDER ONLY' : 'AUTONOMOUS · DEFEND YOUR AREA'}`, cls:'me'}); }
+function fuEmcon(S, id, v){ const f = fuById(S, id); if (!f) return; f.emcon = !!v; ev(S, 'EMCON', `${f.name} radar ${v ? 'silent' : 'radiating'}`); S.log.push({t:S.t, who:'FDC', text:`${f.name} ${v ? 'GO SILENT' : 'RADIATE'}`, cls:'me'}); }
+function fuPtl(S, id, ptl){ const f = fuById(S, id); if (!f || f.ltamds) return; if (f === S.bat) return reorient(S, ptl); if (f.reorient > 0 || !f.alive) return; f.reorient = 25; f.newPtl = (ptl + 360) % 360; ev(S, 'PTL', `${f.name} reorienting to ${Math.round(f.newPtl)}°`); S.log.push({t:S.t, who:'NET', text:`${f.name} REORIENTING · RADAR DOWN 25 S`, cls:'net'}); }
+function coverageBn(scn, ptls, arch){ // union coverage of every fire unit
+  const map = MAP[scn.map], U = scn.bn.units.map((u, i) => ({...u, ptl:ptls && ptls[i] != null ? ptls[i] : u.ptl, half:arch === 'IBCS' && u.ltamds ? 180 : 60}));
+  const inFan = (u, x, y) => { const dx = x - u.x, dy = y - u.y; return Math.hypot(dx, dy) < 2.5 || Math.abs(angDiff(brgOf(dx, dy), u.ptl)) <= u.half; };
+  const assets = scn.assets.map(a => { const d = Math.hypot(a.x - U[0].x, a.y - U[0].y); return {a, b:brgOf(a.x - U[0].x, a.y - U[0].y), d, ok:U.some(u => inFan(u, a.x, a.y)), n:U.filter(u => inFan(u, a.x, a.y)).length}; });
+  const axis = (scn.axis || []).map(b => { const ok = U.filter(u => Math.abs(angDiff(b, u.ptl)) <= u.half); return {b, ok:ok.length > 0, reach:ok.length ? Math.max(...ok.map(u => lowAltReach(map, u.x, u.y, b, .1))) : 0}; });
+  return {assets, axis, units:U, ok:assets.every(x => x.ok) && axis.every(x => x.ok)};
+}
+function civDebris(S, e){ // an intercept low over a town still drops metal on it
+  const gx = e.x + (e.vx || 0) * 6, gy = e.y + (e.vy || 0) * 6;
+  for (const a of S.assets){ if (!a.pop || Math.hypot(gx - a.x, gy - a.y) > 4) continue;
+    S.st.civDebris++; S.st.hitsW += .3 * PRI_W[a.pri]; a.hp = Math.max(0, a.hp - .25);
+    ev(S, 'DEBRIS', `Debris from track ${e.trk ? e.trk.num : ''} fell on ${a.name}`, {bad:true, x:gx, y:gy}); S.out.push({k:'debris', x:gx, y:gy, bad:true}); return; }
+  S.out.push({k:'debris', x:gx, y:gy, bad:false});
+}
+
+// ---------- scenario editor: a raid built from a share code ----------
+const MIX_KEYS = ['SRBM','MRBM','MRBMC','MARV','ABM','CM','OWA','DECOY','FTR','JAM','HELO'];
+const MIX_RANGE = {SRBM:300, MRBM:800, MRBMC:800, MARV:800, ABM:380, CM:115, OWA:100, DECOY:100, FTR:220, JAM:200, HELO:45};
+function buildCustom(cfg, SCN){
+  const base = SCN.find(x => x.id === cfg.base && !x.tutorial); if (!base) return null;
+  const scn = JSON.parse(JSON.stringify(base)), r = rng32((cfg.seed >>> 0) || 7);
+  const lo = clamp(+cfg.lo || 0, 0, 359), hi = clamp(+cfg.hi != null ? +cfg.hi : lo + 60, 0, 720), span = ((hi - lo) + 360) % 360 || 60;
+  const dur = clamp(+cfg.dur || 600, 300, 1200), ids = scn.assets.map(a => a.id), waves = [];
+  for (const k of MIX_KEYS){
+    const n = clamp(Math.round(+(cfg.mix || {})[k] || 0), 0, 60); if (!n) continue;
+    const parts = n >= 12 ? 3 : n >= 5 ? 2 : 1, T = TYPES[k];
+    for (let p = 0; p < parts; p++){
+      const cnt = Math.round(n / parts) + (p === parts - 1 ? n - Math.round(n / parts) * parts : 0); if (cnt <= 0) continue;
+      const t = Math.round(20 + (dur * .72) * (p + r() * .8) / parts), brg = (lo + r() * span) % 360;
+      const tg = []; for (let i = 0; i < cnt; i++) tg.push(ids[Math.floor(r() * ids.length)]);
+      waves.push({t, type:k, n:cnt, brg, spread:Math.min(20, span / 3), range:MIX_RANGE[k], every:T.ballistic ? 2.5 : 6, targets:tg, miss:T.ballistic ? Math.floor(cnt / 6) : 0, alt:k === 'CM' ? .05 : undefined, role:k === 'FTR' ? (r() < .5 ? 'sead' : 'standoff') : undefined, arm:2, cm:2});
+    }
+  }
+  waves.sort((a, b) => a.t - b.t);
+  Object.assign(scn, {id:'cx', custom:true, theater:scn.theater, name:String(cfg.name || 'Custom raid').slice(0, 40), short:'Custom raid from the editor.', inspired:'Built in the scenario editor on the ' + base.name + ' map.',
+    brief:['A raid built in the scenario editor on the ' + base.name + ' layout. Same code, same raid.'], intel:[`Threats from ${String(Math.round(lo)).padStart(3, '0')} to ${String(Math.round(hi) % 360).padStart(3, '0')}.`],
+    dur, waves, random:null, real:null, endgame:false, axis:[Math.round(lo), Math.round((lo + span / 2) % 360), Math.round(hi % 360)].filter((v, i, a) => a.indexOf(v) === i),
+    wcs:['HOLD','TIGHT','FREE'].includes(cfg.wcs) ? cfg.wcs : scn.wcs, adw:'RED', orders:[{t:6, k:'MSG', text:`${scn.bty.split(' ')[0].charAt(0) + scn.bty.split(' ')[0].slice(1).toLowerCase()}, ${scn.td}. Custom raid inbound. Weapons ${(['HOLD','TIGHT','FREE'].includes(cfg.wcs) ? cfg.wcs : scn.wcs).toLowerCase()}.`}]});
+  const fr = clamp(+cfg.fr || 0, 0, 6), cor = (MAP[scn.map].corridors || []).length;
+  scn.friendly = fr && cor ? [{t:90, n:fr, cor:0, iffFail:cfg.dead ? [0] : [], stray:cfg.dead ? [0] : [], side:1, off:16}] : [];
+  if (!cfg.civil) scn.civil = [];
+  if (cfg.faults === 'none') scn.faults = 'none'; else delete scn.faults;
+  return scn;
+}
+function encodeCustom(cfg){ const j = JSON.stringify({v:1, ...cfg}); return 'HT4-' + (typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(j))) : Buffer.from(j, 'utf8').toString('base64')).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_'); }
+function decodeCustom(code){
+  try { let b = String(code).trim().replace(/^HT4-/, '').replace(/-/g, '+').replace(/_/g, '/'); while (b.length % 4) b += '=';
+    const j = typeof atob !== 'undefined' ? decodeURIComponent(escape(atob(b))) : Buffer.from(b, 'base64').toString('utf8'); const c = JSON.parse(j); return c && c.v === 1 && c.base ? c : null; } catch (e) { return null; }
 }
 
 // ---------- main step ----------
@@ -1355,6 +1622,7 @@ function step(S, dt = DT){
   processOrders(S);
   stepFaults(S);
   if (S.n % 20 === 0){ stepRadarBudget(S); stepRed(S); stepCrew(S); stepSbw(S); }
+  if (S.bn){ stepFus(S, dt); if (S.n % 10 === 0) stepBn(S); }
   for (const e of S.ents) if (e.alive) stepEnt(S, e, dt);
   updateTracks(S, dt);
   if (S.t >= S.nextAuto){ S.nextAuto = S.t + .5; autoEngage(S); }
@@ -1405,6 +1673,7 @@ function aiPatriot(S){ // the Patriot crew when you sit at THAAD fire control: b
   }
 }
 function autoEngage(S){
+  if (S.bn) return aiBn(S);
   if (S.thaad){ if (S.seat === 'THAAD'){ aiPatriot(S); if (S.mode !== 'MANUAL' && thaadOn(S)) for (const x of thaadPick(S)){ const s = solve(S, x.e, 'THAAD'); if (s.ok || s.why === 'ABOVE CEILING') engage(S, x.e, {src:S.mode === 'AUTO' ? 'auto' : 'semi', wpn:'THAAD'}); } return; } aiThaad(S); }
   if (S.mode === 'MANUAL' || !radarOn(S)) return;
   for (const e of S.ents){
@@ -1454,8 +1723,8 @@ function score(S){
   const st = S.st;
   const protect = Math.round(st.potW > 0 ? 40 * Math.max(0, 1 - st.hitsW / st.potW) : 40);
   const disc = Math.round(Math.max(0, 25 - 6 * st.viol - 3 * st.lateAck - 2 * st.misId - 3 * st.engMissed));
-  const econ = Math.round(Math.max(0, Math.min(20, 20 - 2.5 * st.wasted - 1.5 * st.mseDrone)));
-  const surv = Math.round(st.radarLost ? 0 : Math.max(0, 15 - 4 * st.lsLost - (st.tpyLost ? 6 : 0)));
+  const ek = S.bn ? .5 : 1, econ = Math.round(Math.max(0, Math.min(20, 20 - ek * (2.5 * st.wasted + 1.5 * st.mseDrone + st.dupShots))));
+  const surv = Math.round(st.radarLost ? 0 : Math.max(0, 15 - 4 * st.lsLost - 5 * st.fuLost - (st.tpyLost ? 6 : 0)));
   const total = st.frat ? 0 : protect + disc + econ + surv;
   return {protect, disc, econ, surv, total, frat:st.frat > 0};
 }
@@ -1488,8 +1757,20 @@ function findings(S){
   if (st.clusterHits) imp.push(`${st.clusterRel} cluster warhead(s) opened before anyone killed them, causing ${st.clusterHits} hit(s). Kill clusters high: the upper tier, or an early Patriot shot, before 12 to 20 km.`);
   if (st.tpyLost) imp.push('The TPY-2 was destroyed. The radar is the target: shoot what is aimed at it first, and keep the THAAD site inside your sector.');
   if (st.uncertain) imp.push(`${st.uncertain} hit(s) left the warhead falling. Watch kill assessment: an UNCERTAIN track still needs a shot.`);
+  if (S.bn){
+    if (S.bn.arch === 'IBCS' && st.dup === 0 && st.kills > 0) sus.push('One composite picture, one shooter per threat: no battery doubled up on a missile.');
+    if (st.corr) sus.push(`You correlated ${st.corr} dual designation(s) so the batteries saw one track, not two.`);
+    if (st.dupShots >= 3) imp.unshift(`${st.dupShots} missiles went at targets another battery was already engaging. Legacy batteries learn about each other's shots late. Hold the overlapping batteries and assign from the FDC, or fight under IBCS.`);
+    if (st.duals - st.corr >= 3) imp.push(`${st.duals - st.corr} dual designation(s) stayed on the scope. Two numbers moving together are one aircraft: hook it and correlate (X).`);
+    if (st.swaps && st.frat) imp.unshift('Track numbers swapped where a fighter crossed the drone stream, and the hostile identity moved onto the friendly. Re-interrogate both tracks after any merge.');
+    if (st.fuLost) imp.push(`${st.fuLost} fire unit radar(s) lost. Under IBCS their launchers can still fire on other radars' tracks; under legacy they go dark.`);
+    if (st.civDebris) imp.push(`${st.civDebris} intercept(s) low over a town dropped debris on it. Engage earlier and higher over populated areas.`);
+    if (st.ppli && S.bn.arch === 'IBCS') sus.push(`IBCS matched ${st.ppli} friendly fighter(s) with a dead Mode 4 to their Link 16 position report.`);
+  }
   let rec = 'Run it again with the same seed and beat your score.';
-  if (st.frat) rec = 'Fly semiautomatic around mixed traffic, and hook every NO RESPONSE track inside the corridor before you declare it.';
+  if (st.frat && st.swaps && S.bn) rec = 'Watch the veto window: when a battery calls an engagement on an air track, check the identity before the six seconds run out.';
+  else if (st.frat) rec = 'Fly semiautomatic around mixed traffic, and hook every NO RESPONSE track inside the corridor before you declare it.';
+  else if (S.bn && st.dupShots >= 4) rec = 'Run the same seed under IBCS, then under legacy with the overlapping batteries on HOLD. Compare the missiles spent.';
   else if (hitsUntracked) rec = 'Before you take the watch, put the threat axis in the middle of your sector, not at its edge.';
   else if (st.wasted >= 3) rec = 'Hold your fire on anything without a red impact marker or a DAL heading. The queue ranks threats for you; trust it.';
   else if (st.mseDrone >= 2) rec = 'Set the drone doctrine to GEM-T single shot and keep PAC-3 for ballistic missiles.';
@@ -1500,6 +1781,6 @@ function findings(S){
 
 return {createSim, step, DT, RADAR, WEAPONS, TYPES, MAP, brgOf, polar, angDiff, horizon, heightAt, isLand, lowAltReach, terrainFaces, coverage, assess, solve, threatQueue, roeCheck, engage, activePlan, radarOn, rounds,
   setMode, setEmcon, playerId, playerIff, holdFire, veto, ack, reload, reorient, displace, remaining, findings, score, onAirway, inCorridor, spoken, brgS, PRI_W,
-  CHAN, cmd, rewind, runGhost, learnRed, planRed, FAULTS, FIX_ACTIONS, CREW, setSector, tcaEff, circMean, thaadOn, lsTotal, REL, predict, tpyDetects};
+  CHAN, cmd, rewind, runGhost, buildCustom, encodeCustom, decodeCustom, MIX_KEYS, radarOnFu, fuById, bestShooter, coverageBn, roundsFu, inZone, LINK_DELAY, learnRed, planRed, FAULTS, FIX_ACTIONS, CREW, setSector, tcaEff, circMean, thaadOn, lsTotal, REL, predict, tpyDetects};
 })();
 if (typeof module !== 'undefined') module.exports = HT_SIM;

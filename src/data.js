@@ -465,6 +465,50 @@ const SCN = [
   civil:[{aw:0,t0:5,every:70,n:7},{aw:1,t0:30,every:80,n:6}],
   friendly:[{t:120,n:2,cor:0,iffFail:[1],tag:'rand'}], random:{lo:0,hi:120}},
 
+ // ---------------- BATTALION (4.0) ----------------
+ {id:'bn1', theater:'BN', name:'Wisła Night', place:'Podkarpackie, south-east Poland', map:'RZE', td:'WARLOCK', bty:'TALON 3-52',
+  inspired:'Inspired by Poland’s IBCS Patriot batteries and the drone and missile threat to the eastern flank, 2025',
+  short:'Four batteries, one fire direction centre. Fight it the old way or the IBCS way, and keep the fighters alive.',
+  brief:['You run the battalion fire direction centre. Four Patriot batteries cover the Jasionka logistics hub, Rzeszów, the Przemyśl rail hub, the Stalowa Wola steelworks and the Mielec aircraft plant.','Choose the architecture before you take the watch. LEGACY: each battery fights from its own radar and learns what its neighbours are doing over a slow data link, so two batteries can fire at the same missile and tracks get double numbers or swap where they cross. IBCS: one picture from every radar, any launcher can fire on any sensor’s track, and the system picks the best shooter. Poland has bought IBCS and LTAMDS for its Wisła programme.','Polish and Dutch fighters hold a CAP east of Rzeszów, right in the drone stream. One of them has a dead Mode 4. A friendly that loses its identity in the clutter is your problem.'],
+  intel:['Drones and decoys from 060 to 120, crossing the San near Przemyśl.','Cruise missiles low through the Carpathian valleys from 130 to 140, and from Belarus at 040.','Iskander-class and Kinzhal-class missiles at the hub and the rail junction.','Weapons Free Zone along the border. CAP box east of Rzeszów. Airlifters use the NATO lane from the west.'],
+  dur:780, wcs:'TIGHT', adw:'YELLOW', mode:'SEMI', ptl:90, axis:[60,100,135],
+  sites:[{name:'A · Jasionka',x:2,y:-3}],
+  bn:{arch:'LEGACY', area:35, units:[
+    {id:'A', name:'ALPHA', x:2, y:-3, ptl:90, ltamds:true},
+    {id:'B', name:'BRAVO', x:40, y:-36, ptl:95, launchers:[['MSE',12,0],['GEMT',0,4],['MIX',6,2]]},
+    {id:'C', name:'CHARLIE', x:6, y:40, ptl:75, ltamds:true, launchers:[['MSE',12,0],['GEMT',0,4],['MIX',6,2]]},
+    {id:'D', name:'DELTA', x:-36, y:18, ptl:95, launchers:[['MSE',8,0],['GEMT',0,4],['MIX',6,2]]}]},
+  assets:[{id:'hub',name:'Jasionka logistics hub',x:0,y:4,pri:1,hp:4},{id:'rze',name:'Rzeszów',x:4,y:-14,pri:2,hp:3,pop:true},{id:'prz',name:'Przemyśl rail hub',x:60,y:-48,pri:1,hp:3},{id:'hsw',name:'Stalowa Wola steelworks',x:0,y:62,pri:2,hp:3},{id:'mie',name:'Mielec aircraft plant',x:-42,y:24,pri:2,hp:3}],
+  launchers:[['MSE',12,0],['MSE',12,0],['GEMT',0,4],['MIX',6,2]], reserve:{MSE:12,GEMT:6},
+  cuas:[{type:'GUN',name:'Gun · hub',x:1,y:3,r:3.5},{type:'COY',name:'Coyote',x:3,y:-8,n:12,r:13}],
+  acm:[{k:'WFZ', name:'WFZ SAN', poly:[[84,-200],[112,-200],[112,200],[84,200]]},{k:'CAP', name:'CAP EAST', poly:[[34,-30],[74,-30],[74,34],[34,34]]}],
+  civil:[{aw:0,t0:5,every:120,n:3}],
+  friendly:[{t:150,n:2,cor:0,type:'CGO'},{t:430,n:2,cor:0,iffFail:[1],stray:[1],side:-1,off:18,tag:'viper'}],
+  others:[{t:20,type:'FRD',route:[[40,24],[68,24],[68,-22],[40,-22]],alt:1.8,loop:true,until:640},{t:34,type:'FRD',route:[[68,-22],[40,-22],[40,24],[68,24]],alt:1.6,loop:true,until:640,iffFail:true,tag:'cap2'}],
+  waves:[W(30,'OWA',8,{brg:95,spread:20,range:110,every:6,targets:['hub','rze','prz'],miss:2}),W(60,'DECOY',8,{brg:85,spread:24,range:110,every:6,targets:['hub','rze']}),W(150,'CM',4,{brg:135,spread:8,range:115,every:8,alt:.05,targets:['hub','mie','rze','hub']}),W(220,'OWA',10,{brg:72,spread:24,range:110,every:5,targets:['hsw','hub','rze'],miss:2}),W(300,'SRBM',4,{brg:75,spread:8,range:320,every:3,targets:['hub','prz','hub','fu:A']}),W(380,'CM',4,{brg:40,spread:8,range:115,every:7,alt:.06,targets:['hsw','hub','mie']}),W(470,'ABM',2,{brg:100,spread:6,range:400,every:5,targets:['hub','prz']}),W(520,'OWA',12,{brg:100,spread:26,range:110,every:4,targets:['hub','prz','rze','hsw'],miss:3}),W(600,'SRBM',4,{brg:85,spread:10,range:320,every:2,targets:['prz','hub','rze']})],
+  orders:[{t:6,k:'MSG',text:'Talon, Warlock. Weapons Tight. Fighters on CAP east of Rzeszów. Nothing in the CAP box gets a missile without a hostile declaration.'},{t:280,k:'ADW',v:'RED',text:'All stations, Warlock. Ballistic launches from Belarus. Air Defense Warning Red.'},{t:460,k:'HOLDFIRE',tag:'viper',text:'Talon, Warlock. Viper two is south of the lane with a dead Mode 4, returning to Jasionka. Hold fire.'}]},
+
+ {id:'bn2', theater:'BN', name:'Negev Shield', place:'Negev, Israel', map:'NEV', td:'GIDEON', bty:'KESHET 1',
+  inspired:'Inspired by the 2025 and 2026 Iranian missile salvos on the Negev',
+  short:'Four Patriot batteries under a THAAD battery, towns under the flight path, and every low intercept drops metal on someone.',
+  brief:['You run the fire direction centre for four Patriot batteries around Nevatim, Beersheba, Dimona and Arad. A THAAD battery works the upper tier on its own.','The towns now count. A warhead that reaches Beersheba, Dimona or Arad is the worst outcome, but even a good intercept low over a town drops debris on it. Kill high when you can.','Israeli fighters hold a CAP over the Dead Sea where the Iraqi militia drones cross. One of them has a dead Mode 4.'],
+  intel:['Medium-range salvos from 070 to 095, 900 km out, including cluster and maneuvering warheads.','A few missiles from Yemen, bearing 170 to 180.','Militia drones from 090 to 110.'],
+  dur:840, wcs:'FREE', adw:'RED', mode:'SEMI', ptl:80, axis:[70,95,175], civHarm:true,
+  sites:[{name:'A · Nevatim',x:0,y:-3}],
+  bn:{arch:'LEGACY', area:25, units:[
+    {id:'A', name:'ALPHA', x:0, y:-3, ptl:80, ltamds:true},
+    {id:'B', name:'BRAVO', x:-14, y:4, ptl:75, launchers:[['MSE',12,0],['GEMT',0,4],['MIX',6,2]]},
+    {id:'C', name:'CHARLIE', x:18, y:-14, ptl:100, ltamds:true, launchers:[['MSE',12,0],['MSE',8,0],['MIX',6,2]]},
+    {id:'D', name:'DELTA', x:14, y:14, ptl:80, launchers:[['MSE',12,0],['GEMT',0,4],['MIX',6,2]]}]},
+  thaad:{x:-12,y:12,ptl:80,rounds:8,launchers:3,name:'THAAD'},
+  assets:[{id:'rwy',name:'Nevatim runway',x:0,y:0,pri:1,hp:4},{id:'shel',name:'F-35I shelters',x:3,y:2,pri:1,hp:3},{id:'dim',name:'Dimona facility',x:20,y:-10,pri:1,hp:3},{id:'bsh',name:'Beersheba',x:-18,y:5,pri:2,hp:3,pop:true},{id:'dtown',name:'Dimona',x:24,y:-4,pri:2,hp:3,pop:true},{id:'ard',name:'Arad',x:12,y:16,pri:2,hp:3,pop:true}],
+  launchers:[['MSE',12,0],['MSE',12,0],['GEMT',0,4],['MIX',6,2]], reserve:{MSE:8,GEMT:4,THAAD:0},
+  acm:[{k:'CAP', name:'CAP DEAD SEA', poly:[[34,-24],[66,-24],[66,36],[34,36]]},{k:'BDZ', name:'NEVATIM BDZ', x:0, y:0, r:12}],
+  friendly:[{t:110,n:2,cor:0},{t:500,n:2,cor:0,iffFail:[0],stray:[0],side:1,off:16,tag:'adir'}],
+  others:[{t:20,type:'FRD',route:[[40,30],[60,30],[60,-18],[40,-18]],alt:1.8,loop:true,until:700},{t:30,type:'FRD',route:[[60,-18],[40,-18],[40,30],[60,30]],alt:1.5,loop:true,until:700,iffFail:true,tag:'cap2'},{t:5,type:'TNK',route:[[-130,40],[-90,70],[-70,40],[-110,10]],alt:8.5,loop:true,until:800}],
+  waves:[W(40,'OWA',10,{brg:98,spread:14,range:110,every:6,targets:['rwy','shel','dim','ard'],miss:2}),W(80,'MRBM',10,{brg:82,spread:12,range:900,every:1.5,targets:['rwy','bsh','shel','dim','dtown','ard'],miss:2}),W(240,'MRBMC',4,{brg:76,spread:10,range:900,every:3,targets:['bsh','ard','dtown','rwy']}),W(270,'MRBM',8,{brg:88,spread:10,range:900,every:1.5,targets:['dim','rwy','shel','bsh'],miss:1}),W(300,'MRBM',3,{brg:175,spread:4,range:900,every:6,targets:['rwy','dim','bsh']}),W(420,'OWA',12,{brg:102,spread:18,range:110,every:5,targets:['rwy','shel','ard','dtown'],miss:2}),W(480,'MARV',3,{brg:80,spread:8,range:900,every:3,targets:['shel','dim','rwy']}),W(520,'MRBMC',4,{brg:86,spread:10,range:900,every:3,targets:['dtown','ard','bsh','rwy']})],
+  orders:[{t:6,k:'MSG',text:'Keshet, Gideon. Weapons Free. THAAD has the upper tier. Towns are on your list tonight: kill high over them.'},{t:530,k:'HOLDFIRE',tag:'adir',text:'Keshet, Gideon. Adir flight returning north of the lane, lead squawk is dead. Hold fire.'}]},
+
  // ---------------- EUROPE ----------------
  {id:'eu1', theater:'EU', name:'Hub Defense', place:'Rzeszów-Jasionka Airport, Poland', map:'RZE', td:'TITAN', bty:'DELTA 5-7',
   inspired:'Inspired by the September 2025 drone incursion into Polish airspace',
@@ -580,7 +624,7 @@ const CAMPAIGNS = {
     partners:[{name:'UAE',start:100,burn:[25,20,15,10]},{name:'Qatar',start:100,burn:[15,10,10,5]},{name:'Bahrain',start:100,burn:[35,25,20,7]},{name:'Kuwait',start:100,burn:[25,20,20,10]},{name:'Israel (upper tier)',start:100,burn:[10,15,25,30]}]},
 };
 
-const THEATERS = {TRN:'Training', ME:'Middle East', EU:'Europe', IR:'Iran war 2026'};
+const THEATERS = {TRN:'Training', ME:'Middle East', EU:'Europe', IR:'Iran war 2026', BN:'Battalion'};
 
 return {TYPES, WEAPONS, MAP, SCN, CAMPAIGNS, THEATERS};
 })();
